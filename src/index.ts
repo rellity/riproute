@@ -1,4 +1,5 @@
 export { Router } from './components/router.tsrx';
+export { createRouterApp } from './create-router-app.tsrx';
 export { Outlet } from './components/outlet.tsrx';
 export { Link } from './components/link.tsrx';
 export { Redirect } from './components/redirect.tsrx';

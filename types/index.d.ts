@@ -19,6 +19,12 @@ import type { LinkProps, RedirectProps, RouterProps } from '../src/types/index';
 /** Owns the current location and renders the matched route. Takes no children. */
 export declare function Router(props: RouterProps): void;
 
+/**
+ * Wraps `<Router>` in a props-less component, which is what Ripple's `render()`
+ * needs on the server. Used by both generated entries.
+ */
+export declare function createRouterApp(props: RouterProps): Component;
+
 /** Renders the route matching the current location. Placed by a root layout. */
 export declare function Outlet(props: { fallback?: Component }): void;
 

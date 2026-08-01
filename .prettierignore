@@ -3,6 +3,7 @@ dist/
 pnpm-lock.yaml
 package-lock.json
 
-# @ripple-ts/prettier-plugin pins an @tsrx/ripple that predates the `@{`
-# component-body syntax and rewrites bodies to `/* Unknown: JSXCodeBlock */`.
+# Prettier cannot parse `.tsrx`: @ripple-ts/prettier-plugin pins an @tsrx/ripple
+# that predates the `@{` component-body syntax and rewrites bodies to
+# `/* Unknown: JSXCodeBlock */`. Re-enable when it catches up.
 *.tsrx

@@ -9,10 +9,12 @@
 	},
 	"scripts": {
 		"build": "tsdown",
+		"prepare": "tsdown",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"format": "prettier --write .",
-		"format:check": "prettier --check ."
+		"format:check": "prettier --check .",
+		"test:e2e": "node tests/e2e/run.mjs"
 	},
 	"exports": {
 		".": {
@@ -26,9 +28,9 @@
 			"default": "./dist/vite/index.js"
 		},
 		"./server": {
-			"types": "./dist/server/index.d.ts",
-			"import": "./dist/server/index.js",
-			"default": "./dist/server/index.js"
+			"types": "./types/server.d.ts",
+			"import": "./src/server/index.ts",
+			"default": "./src/server/index.ts"
 		},
 		"./adapter-node": {
 			"types": "./dist/adapter-node/index.d.ts",
@@ -47,9 +49,9 @@
 	],
 	"license": "MIT",
 	"devDependencies": {
-		"@ripple-ts/vite-plugin": "^0.3.118",
 		"@types/node": "^24.3.0",
 		"jsdom": "^26.0.0",
+		"playwright": "^1.62.1",
 		"prettier": "^3.6.2",
 		"ripple": "^0.3.118",
 		"tsdown": "^0.15.6",
@@ -58,7 +60,6 @@
 		"vitest": "^3.2.4"
 	},
 	"peerDependencies": {
-		"@ripple-ts/vite-plugin": "^0.3.118",
 		"ripple": "^0.3.118",
 		"vite": "^6 || ^7"
 	}
