@@ -16,13 +16,13 @@ import { riproute } from 'riproute/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-	plugins: [riproute({ title: 'My app' }), ripple()],
+	plugins: [riproute(), ripple()],
 });
 ```
 
 ```
 src/routes/
-	__root.tsrx        the layout every route renders inside
+	__root.tsrx        the document and the layout
 	index.tsrx         /
 	about.tsrx         /about
 	users.$id.tsrx     /users/:id
@@ -32,8 +32,27 @@ src/routes/
 
 ```tsrx
 // src/routes/__root.tsrx
+import type { Children } from 'ripple';
 import { Link, Outlet } from 'riproute';
 
+// The base document. `shell` replaces index.html — `{props.children}` is where
+// the app goes, no id="root" div needed. Server-only: the browser hydrates the
+// content at the slot, never the document around it. (Ripple treats <head> as
+// its own block, so it sits beside <html>; riproute reassembles the document.)
+export function shell(props: { children?: Children }) @{
+	<>
+		<head>
+			<meta charset="utf-8" />
+			<title>{'My app'}</title>
+		</head>
+
+		<html lang="en">
+			<body>{props.children}</body>
+		</html>
+	</>
+}
+
+// The layout every route renders inside — the part the browser hydrates.
 export default function RootLayout() @{
 	<div>
 		<nav><Link href="/about" activeClass="active">{'About'}</Link></nav>
@@ -44,6 +63,10 @@ export default function RootLayout() @{
 
 That is the whole setup. `vite` serves it with SSR; `vite build` produces
 `dist/client` and `dist/server`; `node dist/server` serves the built app.
+
+Prefer a static shell? Skip the `shell` export and put an `index.html` with a
+`<div id="root"></div>` next to `vite.config.ts` — riproute renders into that
+instead.
 
 ## Install
 
@@ -144,10 +167,11 @@ export default function About() @{
 }
 ```
 
-`&title` expands to the app's `title` option, and `replace` is the default. So
-the keyword is only ever needed to append _without_ the token:
+`&title` expands to the base title — the `<title>` written in the shell's
+`<head>` (or, failing that, the plugin's `title` option) — and `replace` is the
+default. So the keyword is only ever needed to append _without_ the token:
 
-| Written                                                | With `title: 'Site'`                          |
+| Written                                                | With base title `Site`                        |
 | ------------------------------------------------------ | --------------------------------------------- |
 | `<title>{'docs'}</title>`                              | `docs`                                        |
 | `<title replace>{'docs'}</title>`                      | `docs`, said out loud                         |
@@ -159,7 +183,9 @@ the keyword is only ever needed to append _without_ the token:
 
 Any expression works, so a title can be built from the route's params:
 `<title>{`User ${props.params.id}`}</title>`. The last claim rendered wins.
-`<title>` inside an `<svg>` is left alone — that one is an accessibility label.
+Two places are left alone: `<title>` inside an `<svg>` (an accessibility
+label), and `<title>` inside a `<head>` block (the document's own base title,
+read statically).
 
 ## Server-only code
 
@@ -200,28 +226,92 @@ riproute({
 });
 ```
 
+## Endpoints and hooks
+
+Anything that is not a page lives in `src/hooks.server.ts`, picked up by name:
+
+```ts
+// src/hooks.server.ts
+export function onRequest(request: Request): Response | undefined {
+	const { pathname } = new URL(request.url);
+
+	if (pathname === '/api/posts') return Response.json(posts);
+
+	return undefined; // fall through to routing
+}
+```
+
+`onRequest` runs before route matching — return a `Response` to answer the
+request, return nothing to let the router carry on. An `onError` export
+overrides the 500 page the same way. The module runs identically under `vite`
+and in the built server, and the `.server.` in its name means importing it from
+a page fails the client build instead of shipping your endpoint code.
+
 ## Plugin options
 
-| Option         | Default         |                                                                       |
-| -------------- | --------------- | --------------------------------------------------------------------- |
-| `routesDir`    | `'src/routes'`  | Scanned for route files. `false` turns file routing off.              |
-| `routes`       | —               | Module exporting a `routes` array. Takes precedence over `routesDir`. |
-| `template`     | `'index.html'`  | The HTML shell.                                                       |
-| `rootId`       | `'root'`        | Element the app renders into.                                         |
-| `base`         | `''`            | Mount the app under a path prefix.                                    |
-| `title`        | —               | Default document title, and what `&title` expands to.                 |
-| `serverOnly`   | —               | Tune what the client bundle refuses to import. See above.             |
-| `clientOutDir` | `'dist/client'` |                                                                       |
-| `serverOutDir` | `'dist/server'` |                                                                       |
+| Option         | Default                 |                                                                        |
+| -------------- | ----------------------- | ---------------------------------------------------------------------- |
+| `routesDir`    | `'src/routes'`          | Scanned for route files. `false` turns file routing off.               |
+| `routes`       | —                       | Module exporting a `routes` array. Takes precedence over `routesDir`.  |
+| `hooks`        | `'src/hooks.server.ts'` | Module exporting `onRequest` / `onError`. `false` disables the lookup. |
+| `template`     | `'index.html'`          | The HTML shell.                                                        |
+| `rootId`       | `'root'`                | Element the app renders into.                                          |
+| `base`         | `''`                    | Mount the app under a path prefix.                                     |
+| `title`        | —                       | Default document title, and what `&title` expands to.                  |
+| `serverOnly`   | —                       | Tune what the client bundle refuses to import. See above.              |
+| `clientOutDir` | `'dist/client'`         |                                                                        |
+| `serverOutDir` | `'dist/server'`         |                                                                        |
 
 Explicit `<!--riproute-head-->` and `<!--riproute-body-->` markers in the
 template are honoured; without them the head content goes before `</head>` and
 the body into `<div id="root">`, so a plain Vite `index.html` works unchanged.
 
+## Production
+
+`vite build` writes `dist/client` (hashed assets) and `dist/server/index.js` — a
+complete server, not a snippet to wire up:
+
+```sh
+PORT=3000 node dist/server
+```
+
+The generated server serves the hashed assets with immutable caching, renders
+everything else, and the adapter underneath it is built for being exposed:
+
+- **Compression** — brotli or gzip by `Accept-Encoding`, for compressible types
+  above 1 KiB. On by default so a bare `node dist/server` behaves well without
+  a proxy in front; a CDN or proxy that compresses can leave it on harmlessly
+  (`vary: accept-encoding` is set).
+- **Graceful shutdown** — SIGTERM/SIGINT stop accepting connections and drain
+  in-flight requests (10s cap) before exiting, so an orchestrator's routine
+  restart drops nothing.
+- **Proxy trust is opt-in** — `x-forwarded-*` headers are ignored unless the
+  handler is created with `trustProxy: true`, because behind no proxy they are
+  attacker-controlled and the URL decides which route runs.
+- **`set-cookie` splitting, backpressure, keep-alive timeouts** tuned to sit
+  behind a 60s-idle proxy without racing it.
+
+Importing `dist/server/index.js` with `RIPROUTE_NO_LISTEN=1` set exports the
+bare `handler` and `server` instead of booting, for embedding in another
+process.
+
 ## Notes on Ripple 0.3.118
 
-Three upstream behaviours shape the design. All are worked around here, and all
+These upstream behaviours shape the design. All are worked around here, and all
 are covered by tests so the workarounds do not get tidied away.
+
+**Route components render a single root element.** A fragment-rooted route
+(`<>…</>`) hydrates fine — and then duplicates the entire layout on its first
+state update, silently. Wrap the page in a `<div>`; the e2e suite counts
+layouts after an update to keep this honest.
+
+**Title claims never touch tracked state.** A tracked write from a component
+rendered during (or right after) hydration re-renders the router's dynamic
+block, with the same duplicated-layout result — reproduced with nothing but an
+empty write in a hydrated route. `setTitle` therefore stamps a plain ref and
+assigns `document.title` directly, and `<Title>` hangs its claim off an
+attribute expression rather than `effect()`, because registering an effect from
+a hydrated route's body desyncs the cursor the same way.
 
 **Why the router takes no children.** A component that renders a dynamic
 expression _after_ `{children}` in a fragment desyncs the hydration cursor, and
@@ -252,10 +342,15 @@ router assigns `document.title` directly.
 
 ```sh
 npm install
-npm test          # unit, SSR, jsdom-client and Vite-build projects
-npm run test:e2e  # dev server and production build, in a real browser
-npm run build     # dist/vite and dist/adapter-node
+npm test              # unit, SSR, jsdom-client and Vite-build projects
+npm run test:coverage # the same, with a V8 coverage report
+npm run test:e2e      # dev server and production build, in a real browser
+npm run build         # dist/vite and dist/adapter-node
 ```
+
+Coverage reads low on the dev middleware and the generated-module templates —
+those run inside real Vite processes during `test:e2e`, which V8 coverage
+cannot see. The browser suite is the test of record for them.
 
 `npm run test:e2e` boots the app in `example/` twice — once under `vite`, once
 from `dist/server` — and asserts, in Chromium, that hydration adopted the server

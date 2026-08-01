@@ -67,7 +67,15 @@ export async function runChecks(baseUrl, label) {
 	);
 
 	check('exactly one <title>', (await page.locator('title').count()) === 1);
-	check('title comes from the router', (await page.title()) === 'riproute');
+	// The home page claims `home` with `append`; the base comes from the
+	// shell's own <head>, not from vite.config.ts.
+	check('hydrated page claims its title', (await page.title()) === 'home | riproute');
+
+	// The regression this file exists for: a state update on the hydrated page
+	// must not duplicate the layout (Ripple 0.3.118 does exactly that when a
+	// tracked write lands during/around hydration, or a route has a fragment
+	// root).
+	check('no layout duplication after update', (await page.locator('main').count()) === 1);
 
 	const before = loads;
 
@@ -95,6 +103,7 @@ export async function runChecks(baseUrl, label) {
 	await page.goBack();
 	await page.waitForSelector('h1:has-text("About")', { timeout: 5000 });
 	check('back button restores the previous route', true);
+	check('still one layout after the round trip', (await page.locator('main').count()) === 1);
 
 	await page.goForward();
 	await page.waitForSelector('h1:has-text("Nothing here")', { timeout: 5000 });

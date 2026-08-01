@@ -2,6 +2,7 @@ import type { Component } from 'ripple';
 import { getCss, render } from 'ripple/server';
 
 import { createRouterApp } from '../create-router-app.tsrx';
+import { renderShell } from './render-shell.tsrx';
 import type { RouteDefinition } from '../types/index';
 import { normalizeBase, stripBase } from '../utils/location';
 import { matchRoutes, normalizeRoutePath } from '../utils/match-routes';
@@ -25,10 +26,26 @@ export type HandlerOptions = {
 	/** Default document title, and what `&title` expands to. */
 	title?: string;
 	/**
-	 * The HTML shell. A function in dev, because Vite rewrites the document per
-	 * request (HMR client, `@vite/client`, plugin-injected tags).
+	 * The HTML shell, as a static document.
+	 *
+	 * A function in dev, because Vite rewrites the document per request (HMR
+	 * client, `@vite/client`, plugin-injected tags). Ignored when `shell` is
+	 * given.
 	 */
-	template: TemplateSource;
+	template?: TemplateSource;
+	/**
+	 * The root route's `shell` export: the base document, written as a component
+	 * rather than an `index.html`. Rendered once per request into the template.
+	 */
+	shell?: Component;
+	/**
+	 * Last look at the assembled document before it is split.
+	 *
+	 * This is where the `<script>` and `<link>` tags go — Vite's in dev, the
+	 * built asset URLs in production. A shell cannot write them itself: it does
+	 * not know its own hashed file names.
+	 */
+	transformTemplate?: (html: string, request: Request) => string | Promise<string>;
 	/** The element SSR output goes into. Defaults to `root`. */
 	rootId?: string;
 	/**
@@ -65,9 +82,40 @@ export function createHandler(options: HandlerOptions): RiprouteHandler {
 		table.set(normalizeRoutePath(route.path), route.element);
 	}
 
-	// A constant template is split once; a per-request one is split per request.
+	if (options.shell === undefined && options.template === undefined) {
+		throw new Error(
+			'[riproute] createHandler needs either a `shell` component or a `template` string.'
+		);
+	}
+
+	// A constant template with nothing to transform is split once; everything
+	// else has to be rebuilt per request.
 	const constantTemplate =
-		typeof options.template === 'string' ? splitTemplate(options.template, rootId) : null;
+		typeof options.template === 'string' &&
+		options.shell === undefined &&
+		options.transformTemplate === undefined
+			? splitTemplate(options.template, rootId)
+			: null;
+
+	async function resolveTemplate(request: Request): Promise<PageTemplate> {
+		if (constantTemplate !== null) return constantTemplate;
+
+		const source =
+			options.shell !== undefined
+				? await renderShell(options.shell)
+				: typeof options.template === 'string'
+					? options.template
+					: await (options.template as (request: Request) => string | Promise<string>)(
+							request
+						);
+
+		const transformed =
+			options.transformTemplate === undefined
+				? source
+				: await options.transformTemplate(source, request);
+
+		return splitTemplate(transformed, rootId);
+	}
 
 	return async function handle(request) {
 		if (options.onRequest !== undefined) {
@@ -86,14 +134,7 @@ export function createHandler(options: HandlerOptions): RiprouteHandler {
 			const matched = matchRoutes(table, pathname);
 			const status = matched === null ? 404 : 200;
 
-			const template =
-				constantTemplate ??
-				splitTemplate(
-					await (options.template as (request: Request) => string | Promise<string>)(
-						request
-					),
-					rootId
-				);
+			const template = await resolveTemplate(request);
 
 			// The last claim wins, and the router reports the base title up front,
 			// so this holds the right value by the time the render finishes.

@@ -11,6 +11,7 @@ export default function Home() @{
 	let count = track(0);
 
 	<div>
+		<title append>{'home'}</title>
 		<h1>{'Home'}</h1>
 		<button onClick={() => count.value++}>{`count: ${count.value}`}</button>
 	</div>

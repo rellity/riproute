@@ -72,14 +72,21 @@ export function Router(props: RouterProps) @{
 	const params = track(() => match.value?.params ?? {});
 	const searchParams = track(() => new URLSearchParams(location.value.search));
 
-	// A title claim is stamped with the match it was made for. Ripple drops
-	// writes to tracked state during teardown, so an outgoing route cannot
-	// release the title on its way out — instead the stamp stops applying the
-	// moment `match` produces a new object.
-	let titleEntry = track<{ match: RouteMatch | null; text: string } | null>(null);
+	// A title claim is stamped with the match it was made for, in a *plain* ref
+	// — deliberately not tracked. A tracked write from a claiming component
+	// schedules a re-render of this block, and around hydration that re-render
+	// duplicates the layout beside the markup it should have adopted (Ripple
+	// 0.3.118, reproduced with nothing but an empty write in a hydrated route).
+	// Nothing needs the reactivity: claims apply `document.title` themselves,
+	// and the derived below re-reads the stamp whenever `match` changes.
+	//
+	// The stamp also solves teardown: an outgoing route cannot release the
+	// title on its way out, so the stamp simply stops applying the moment
+	// `match` produces a new object.
+	const stamp = { current: null as { match: RouteMatch | null; text: string } | null };
 
 	const title = track<string | undefined>(() => {
-		const entry = titleEntry.value;
+		const entry = stamp.current;
 
 		return entry !== null && entry.match === match.value ? entry.text : props.title;
 	});
@@ -97,9 +104,11 @@ export function Router(props: RouterProps) @{
 		title,
 		baseTitle,
 		setTitle(text) {
-			untrack(() => {
-				titleEntry.value = { match: match.value, text };
-			});
+			stamp.current = { match: untrack(() => match.value), text };
+
+			// Assigned, not rendered: `document.title` updates whichever
+			// <title> the document already has, so there is never a second one.
+			if (IS_BROWSER) document.title = text;
 
 			// The server has no second chance: effects never run, and Ripple's
 			// `<head>` block only defers when it sits in the component passed to
@@ -118,9 +127,10 @@ export function Router(props: RouterProps) @{
 	// A route that claims nothing still gets the base title.
 	props.onTitle?.(props.title);
 
-	// In the browser the title is assigned rather than rendered: `document.title`
-	// updates whichever <title> the document already has, so there is never a
-	// second one and nothing to reconcile against the server's.
+	// Falls the title back to the base when navigation lands on a route that
+	// claims nothing. Claims themselves assign `document.title` directly; this
+	// effect's job is only the release. It reads `match`, so it re-runs exactly
+	// once per navigation, after the incoming route has rendered (and stamped).
 	effect(() => {
 		const next = title.value;
 

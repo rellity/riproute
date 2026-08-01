@@ -1,10 +1,32 @@
+import type { Children } from 'ripple';
 import { Link, Outlet } from 'riproute';
 
 /**
- * The layout every route renders inside.
+ * The base document. `shell` replaces `index.html` — the root route owns the
+ * whole page, and `{props.children}` is where the app goes. Server-only; the
+ * browser hydrates the content at the slot, never the document around it.
  *
- * `__root` is discovered by the plugin and handed to `<Router root={...}>`; it
- * decides where the page goes by placing `<Outlet />`.
+ * Ripple treats `<head>` as its own block and re-parents the contents, so it
+ * sits beside `<html>`; riproute reassembles the document. The `<title>` here
+ * is the base title `&title` expands to.
+ */
+export function shell(props: { children?: Children }) @{
+	<>
+		<head>
+			<meta charset="utf-8" />
+			<meta name="viewport" content="width=device-width, initial-scale=1" />
+			<title>{'riproute'}</title>
+		</head>
+
+		<html lang="en">
+			<body>{props.children}</body>
+		</html>
+	</>
+}
+
+/**
+ * The layout every route renders inside; it decides where the page goes by
+ * placing `<Outlet />`.
  */
 export default function RootLayout() @{
 	<div class="app">

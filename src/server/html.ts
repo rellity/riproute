@@ -29,7 +29,12 @@ const ROOT_OPEN = /<div\b[^>]*\bid=["']?root["']?[^>]*>/i;
  * `</head>` and the body content into `<div id="root">`, so a plain Vite
  * `index.html` works untouched.
  */
-export function splitTemplate(html: string, rootId = 'root'): PageTemplate {
+export function splitTemplate(input: string, rootId = 'root'): PageTemplate {
+	// The router always writes the title, so one already in the template is the
+	// default the shell (or index.html) declared — the base that `&title`
+	// expands to. Keeping it would put two `<title>` elements in the document.
+	const html = input.replace(/<title\b[^>]*>[\s\S]*?<\/title\s*>/i, '');
+
 	const headIndex = html.indexOf(HEAD_MARKER);
 	const bodyIndex = html.indexOf(BODY_MARKER);
 

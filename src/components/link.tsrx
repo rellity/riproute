@@ -30,6 +30,10 @@ export function Link({
 	activeClass,
 	exact,
 	onClick,
+	// Taken out of `rest` on purpose. Left in, `class` would appear both in the
+	// spread and in the explicit attribute below, and Ripple's server runtime
+	// writes both — a duplicate attribute in the SSR markup.
+	class: classProp,
 	...rest
 }: LinkProps) @{
 	// May be `undefined`: a `<Link>` outside a `<Router>` still renders a
@@ -49,11 +53,9 @@ export function Link({
 	});
 
 	const className = track(() => {
-		const base = rest.class;
+		if (!active.value) return classProp;
 
-		if (!active.value) return base;
-
-		return base ? `${base} ${activeClass}` : activeClass;
+		return classProp ? `${classProp} ${activeClass}` : activeClass;
 	});
 
 	const handleClick = (event: MouseEvent) => {

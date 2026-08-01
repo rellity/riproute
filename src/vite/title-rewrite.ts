@@ -99,16 +99,29 @@ export async function rewriteTitles(source: string, filename: string): Promise<s
 	return `import { ${IMPORTED_NAME} as ${local} } from 'riproute';${output}`;
 }
 
-/** Finds every `<title>` that is not inside an `<svg>`. */
-function collectTitles(root: Node): Node[] {
-	const found: Node[] = [];
+/**
+ * Reads the document title out of a `<head>` block.
+ *
+ * This is the base title — what `&title` expands to, and what a page with no
+ * title of its own falls back to. Written where you would write it in plain
+ * HTML, in the root route's document, instead of repeated in `vite.config.ts`.
+ *
+ * Static only. The browser needs the same value in order to resolve `&title`
+ * on a client-side navigation, and the shell that carries it is server-rendered
+ * — so a computed title is ignored rather than half-supported.
+ */
+export async function extractBaseTitle(source: string, filename: string): Promise<string | null> {
+	if (!source.includes('<title')) return null;
+
+	const ast = (await parse(source, filename)) as Node;
+	const candidates: Node[] = [];
 	const seen = new WeakSet<Node>();
 
-	const walk = (node: unknown, inSvg: boolean): void => {
+	const walk = (node: unknown, inHead: boolean): void => {
 		if (node === null || typeof node !== 'object') return;
 
 		if (Array.isArray(node)) {
-			for (const item of node) walk(item, inSvg);
+			for (const item of node) walk(item, inHead);
 			return;
 		}
 
@@ -121,14 +134,93 @@ function collectTitles(root: Node): Node[] {
 		if (current.type === 'JSXElement') {
 			const name = elementName(current);
 
-			if (name === 'svg') inSvg = true;
-			else if (name === 'title' && !inSvg) found.push(current);
+			if (name === 'head') inHead = true;
+			else if (name === 'title' && inHead) candidates.push(current);
 		}
 
 		for (const key of Object.keys(current)) {
 			if (SKIPPED_KEYS.has(key)) continue;
 
-			walk(current[key], inSvg);
+			walk(current[key], inHead);
+		}
+	};
+
+	walk(ast, false);
+
+	for (const element of candidates) {
+		const text = staticText(element);
+
+		if (text !== null) return text;
+	}
+
+	return null;
+}
+
+/** The element's content, if all of it is literal. */
+function staticText(element: Node): string | null {
+	const children = (element.children as Node[]).filter(isContent);
+
+	if (children.length !== 1) return null;
+
+	const only = children[0];
+
+	if (only.type === 'JSXText') {
+		const text = normalizeText(only.value as string);
+
+		return text === '' ? null : text;
+	}
+
+	const expression = only.expression;
+
+	if (expression?.type === 'Literal' && typeof expression.value === 'string') {
+		return expression.value;
+	}
+
+	// A template literal with no interpolations is still a constant.
+	if (expression?.type === 'TemplateLiteral' && expression.expressions.length === 0) {
+		return (expression.quasis[0]?.value?.cooked as string | undefined) ?? null;
+	}
+
+	return null;
+}
+
+/**
+ * Finds every `<title>` that is a route's claim on the document title.
+ *
+ * Two ancestors take a `<title>` out of scope. Inside `<svg>` it is an
+ * accessibility label. Inside `<head>` it is the document's own title — the
+ * base that `&title` expands to — which is a literal, not a claim, and is read
+ * statically by the plugin instead.
+ */
+function collectTitles(root: Node): Node[] {
+	const found: Node[] = [];
+	const seen = new WeakSet<Node>();
+
+	const walk = (node: unknown, skip: boolean): void => {
+		if (node === null || typeof node !== 'object') return;
+
+		if (Array.isArray(node)) {
+			for (const item of node) walk(item, skip);
+			return;
+		}
+
+		const current = node as Node;
+
+		if (seen.has(current)) return;
+
+		seen.add(current);
+
+		if (current.type === 'JSXElement') {
+			const name = elementName(current);
+
+			if (name === 'svg' || name === 'head') skip = true;
+			else if (name === 'title' && !skip) found.push(current);
+		}
+
+		for (const key of Object.keys(current)) {
+			if (SKIPPED_KEYS.has(key)) continue;
+
+			walk(current[key], skip);
 		}
 	};
 

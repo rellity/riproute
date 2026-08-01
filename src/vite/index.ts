@@ -10,7 +10,7 @@ import type { ResolvedRiprouteOptions, RiprouteOptions } from './options';
 import { ROUTE_EXTENSIONS, scanRoutes } from './route-scan';
 import type { DiscoveredRoutes } from './route-scan';
 import { serverGuardPlugin } from './server-guard';
-import { titleRewritePlugin } from './title-rewrite';
+import { extractBaseTitle, titleRewritePlugin } from './title-rewrite';
 import {
 	CLIENT_ID,
 	HANDLER_ID,
@@ -63,6 +63,32 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 	let config: ResolvedConfig;
 	let options: ResolvedRiprouteOptions;
 	let discovered: DiscoveredRoutes = { routes: [], root: null };
+	/** `<title>` found in the root route's `<head>`, if it wrote one. */
+	let baseTitle: string | null = null;
+	/** `<script>`/`<link>` tags for the built client, filled in by the client build. */
+	let clientTags = '';
+
+	/**
+	 * Re-reads the base title from the root route.
+	 *
+	 * Cheap and best-effort: a root route mid-edit will not parse, and the
+	 * previous value is a better answer than crashing the dev server over it.
+	 */
+	async function refreshBaseTitle(): Promise<void> {
+		if (discovered.root === null) {
+			baseTitle = null;
+			return;
+		}
+
+		try {
+			baseTitle = await extractBaseTitle(
+				await fs.readFile(discovered.root, 'utf-8'),
+				discovered.root
+			);
+		} catch {
+			// Leave the last good value in place.
+		}
+	}
 
 	function rescan(): boolean {
 		if (options.routesDir === null) return false;
@@ -84,6 +110,12 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 	return {
 		name: 'riproute',
+
+		// One instance across the client and ssr builds. The client build
+		// collects the hashed asset tags; the ssr build bakes them into the
+		// generated server — with per-environment instances the tags would
+		// never make the trip.
+		sharedDuringBuild: true,
 
 		config(userConfig, env) {
 			const root = path.resolve(userConfig.root ?? process.cwd());
@@ -142,12 +174,13 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			};
 		},
 
-		configResolved(resolved) {
+		async configResolved(resolved) {
 			config = resolved;
 			options = resolveOptions(userOptions, resolved.root);
 
 			warnAboutRippleConfig(resolved.root);
 			rescan();
+			await refreshBaseTitle();
 		},
 
 		resolveId(id) {
@@ -158,17 +191,22 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			switch (id) {
 				case resolvedId(ROUTES_ID):
 					return options.routesModule !== null
-						? generateRoutesProxyModule(options.routesModule, options, config.root)
-						: generateRoutesModule(discovered, options, config.root);
+						? generateRoutesProxyModule(
+								options.routesModule,
+								options,
+								config.root,
+								baseTitle
+							)
+						: generateRoutesModule(discovered, options, config.root, baseTitle);
 
 				case resolvedId(CLIENT_ID):
 					return generateClientModule();
 
 				case resolvedId(HANDLER_ID):
-					return generateHandlerModule();
+					return generateHandlerModule(options, config.root);
 
 				case resolvedId(SERVER_ID):
-					return generateServerModule(options);
+					return generateServerModule(options, clientTags);
 
 				default:
 					return null;
@@ -209,11 +247,15 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 		},
 
 		/**
-		 * Writes the production shell.
+		 * Collects the built asset tags, and writes the shell when there is one
+		 * on disk.
 		 *
 		 * Vite's HTML pipeline is not involved — `appType` is `'custom'` and the
 		 * client entry is a virtual module, so there is no HTML entry for Vite to
-		 * process. The manifest gives us the hashed entry chunk and its CSS.
+		 * process. An app whose root route renders the document has no
+		 * `index.html` at all; there the tags are handed to the generated server,
+		 * which injects them into the rendered document. The SSR build runs after
+		 * this one, so `clientTags` is set by the time it asks.
 		 */
 		async writeBundle(_outputOptions, bundle) {
 			if (this.environment?.name !== 'client') return;
@@ -225,18 +267,22 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 			if (entry === undefined || entry.type !== 'chunk') return;
 
-			const raw = await fs.readFile(options.template, 'utf-8');
 			const base = config.base === '' ? '/' : config.base;
-			const tags = [
+
+			clientTags = [
 				...collectCss(bundle, entry.fileName).map(
 					(file) => `<link rel="stylesheet" crossorigin href="${base}${file}">`
 				),
 				`<script type="module" crossorigin src="${base}${entry.fileName}"></script>`,
-			].join('\n\t\t');
+			].join('');
+
+			const raw = await fs.readFile(options.template, 'utf-8').catch(() => null);
+
+			if (raw === null) return;
 
 			const html = raw.includes('</head>')
-				? raw.replace('</head>', `\t${tags}\n\t</head>`)
-				: raw + tags;
+				? raw.replace('</head>', `\t${clientTags}\n\t</head>`)
+				: raw + clientTags;
 
 			await fs.mkdir(options.clientOutDir, { recursive: true });
 			await fs.writeFile(path.join(options.clientOutDir, 'index.html'), html, 'utf-8');

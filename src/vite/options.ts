@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import type { ServerOnlyOptions } from './server-guard';
@@ -17,6 +18,14 @@ export type RiprouteOptions = {
 	 * code-first apps. Takes precedence over `routesDir`.
 	 */
 	routes?: string;
+	/**
+	 * Module exporting `onRequest` / `onError`, for anything that is not a page
+	 * — JSON endpoints, redirects, auth gates.
+	 *
+	 * Defaults to `src/hooks.server.ts` when it exists. `false` disables the
+	 * lookup.
+	 */
+	hooks?: string | false;
 	/** HTML shell. Relative to the Vite root. */
 	template?: string;
 	/** Element the app is rendered into. */
@@ -36,6 +45,8 @@ export type RiprouteOptions = {
 export type ResolvedRiprouteOptions = {
 	routesDir: string | null;
 	routesModule: string | null;
+	/** Absolute path of the hooks module, or `null` when the app has none. */
+	hooksModule: string | null;
 	template: string;
 	rootId: string;
 	base: string;
@@ -49,6 +60,7 @@ export type ResolvedRiprouteOptions = {
 
 const DEFAULTS = {
 	routesDir: 'src/routes',
+	hooks: 'src/hooks.server',
 	template: 'index.html',
 	rootId: 'root',
 	clientOutDir: 'dist/client',
@@ -70,6 +82,7 @@ export function resolveOptions(options: RiprouteOptions, root: string): Resolved
 	return {
 		routesDir,
 		routesModule,
+		hooksModule: resolveHooks(options.hooks, root),
 		template: path.resolve(root, options.template ?? DEFAULTS.template),
 		rootId: options.rootId ?? DEFAULTS.rootId,
 		base: options.base ?? '',
@@ -80,4 +93,33 @@ export function resolveOptions(options: RiprouteOptions, root: string): Resolved
 		clientDirFromServer:
 			path.relative(serverOutDir, clientOutDir).split(path.sep).join('/') || '.',
 	};
+}
+
+/**
+ * Finds the hooks module.
+ *
+ * Conventional by default and silent when absent, so an app that has no
+ * endpoints never has to say so. An explicit path is required to exist —
+ * quietly ignoring a typo would leave the app's auth gate switched off.
+ */
+function resolveHooks(hooks: string | false | undefined, root: string): string | null {
+	if (hooks === false) return null;
+
+	if (hooks !== undefined) {
+		const file = path.resolve(root, hooks);
+
+		if (!existsSync(file)) {
+			throw new Error(`[riproute] hooks module not found: ${file}`);
+		}
+
+		return file;
+	}
+
+	for (const extension of ['.ts', '.js', '.mts', '.mjs']) {
+		const file = path.resolve(root, DEFAULTS.hooks + extension);
+
+		if (existsSync(file)) return file;
+	}
+
+	return null;
 }

@@ -35,10 +35,16 @@ export function installDevMiddleware(
 			}
 
 			try {
-				const { createRiprouteHandler } = await server.ssrLoadModule(HANDLER_ID);
+				const { createRiprouteHandler, shell } = await server.ssrLoadModule(HANDLER_ID);
 
 				const handler = createRiprouteHandler({
-					template: () => loadTemplate(server, options, req),
+					// A root route that renders the document supplies its own
+					// template; otherwise the app has an index.html on disk.
+					template: shell === undefined ? () => readTemplate(options) : undefined,
+					// Either way Vite gets the last word: it injects the HMR
+					// client, and the entry script is a virtual module that never
+					// appears in the app's own markup.
+					transformTemplate: (html) => transform(server, req, html),
 				});
 
 				await sendResponse(res, await handler(toWebRequest(req)));
@@ -51,20 +57,24 @@ export function installDevMiddleware(
 	};
 }
 
+function readTemplate(options: ResolvedRiprouteOptions): Promise<string> {
+	return fs.readFile(options.template, 'utf-8');
+}
+
 /**
- * Reads the shell and hands it to Vite, then adds the hydration entry.
+ * Hands the document to Vite, then adds the hydration entry.
  *
- * `transformIndexHtml` injects `@vite/client` and any plugin tags; the script
- * tag is ours because the entry is a virtual module and never appears in the
- * user's `index.html`.
+ * `transformIndexHtml` injects `@vite/client` and any plugin tags. The entry
+ * script is ours because it is a virtual module, so it never appears in the
+ * app's own markup — whether that markup came from `index.html` or from a root
+ * route that renders the document.
  */
-async function loadTemplate(
+async function transform(
 	server: ViteDevServer,
-	options: ResolvedRiprouteOptions,
-	req: IncomingMessage
+	req: IncomingMessage,
+	document: string
 ): Promise<string> {
-	const raw = await fs.readFile(options.template, 'utf-8');
-	const html = await server.transformIndexHtml(req.originalUrl ?? req.url ?? '/', raw);
+	const html = await server.transformIndexHtml(req.originalUrl ?? req.url ?? '/', document);
 	const script = `<script type="module" src=${JSON.stringify(devUrl(CLIENT_ID))}></script>`;
 
 	return html.includes('</body>') ? html.replace('</body>', `${script}</body>`) : html + script;

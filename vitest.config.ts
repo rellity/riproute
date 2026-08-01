@@ -37,6 +37,14 @@ const shared = {
 
 export default defineConfig({
 	test: {
+		coverage: {
+			provider: 'v8',
+			include: ['src/**'],
+			// The generated-code templates and the e2e harness are exercised by
+			// the browser suite, which V8 coverage cannot see.
+			exclude: ['src/types/**', 'types/**'],
+			reporter: ['text', 'html'],
+		},
 		projects: [
 			{
 				...shared,
