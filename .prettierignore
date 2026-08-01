@@ -1,0 +1,8 @@
+node_modules/
+dist/
+pnpm-lock.yaml
+package-lock.json
+
+# @ripple-ts/prettier-plugin pins an @tsrx/ripple that predates the `@{`
+# component-body syntax and rewrites bodies to `/* Unknown: JSXCodeBlock */`.
+*.tsrx

@@ -1,0 +1,65 @@
+{
+	"name": "riproute",
+	"version": "0.1.0",
+	"private": true,
+	"description": "A server-rendered router for Ripple, with its own Vite plugin and Node adapter",
+	"type": "module",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
+	},
+	"exports": {
+		".": {
+			"types": "./types/index.d.ts",
+			"import": "./src/index.ts",
+			"default": "./src/index.ts"
+		},
+		"./vite": {
+			"types": "./dist/vite/index.d.ts",
+			"import": "./dist/vite/index.js",
+			"default": "./dist/vite/index.js"
+		},
+		"./server": {
+			"types": "./dist/server/index.d.ts",
+			"import": "./dist/server/index.js",
+			"default": "./dist/server/index.js"
+		},
+		"./adapter-node": {
+			"types": "./dist/adapter-node/index.d.ts",
+			"import": "./dist/adapter-node/index.js",
+			"default": "./dist/adapter-node/index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"src",
+		"dist",
+		"types",
+		"riproute.d.ts",
+		"README.md",
+		"LICENSE"
+	],
+	"license": "MIT",
+	"devDependencies": {
+		"@ripple-ts/vite-plugin": "^0.3.118",
+		"@types/node": "^24.3.0",
+		"jsdom": "^26.0.0",
+		"prettier": "^3.6.2",
+		"ripple": "^0.3.118",
+		"tsdown": "^0.15.6",
+		"typescript": "^5.9.2",
+		"vite": "^7.1.4",
+		"vitest": "^3.2.4"
+	},
+	"peerDependencies": {
+		"@ripple-ts/vite-plugin": "^0.3.118",
+		"ripple": "^0.3.118",
+		"vite": "^6 || ^7"
+	}
+}
