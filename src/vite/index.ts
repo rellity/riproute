@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -8,7 +9,8 @@ import { resolveOptions } from './options';
 import type { ResolvedRiprouteOptions, RiprouteOptions } from './options';
 import { ROUTE_EXTENSIONS, scanRoutes } from './route-scan';
 import type { DiscoveredRoutes } from './route-scan';
-import { tsrxPlugin } from './tsrx-plugin';
+import { serverGuardPlugin } from './server-guard';
+import { titleRewritePlugin } from './title-rewrite';
 import {
 	CLIENT_ID,
 	HANDLER_ID,
@@ -23,7 +25,7 @@ import {
 	resolvedId,
 } from './virtual-modules';
 
-export type { RiprouteOptions } from './options';
+export type { RiprouteOptions, ServerOnlyOptions } from './options';
 export { ROUTES_ID, CLIENT_ID, HANDLER_ID, SERVER_ID } from './virtual-modules';
 
 const CLIENT_ENTRY_NAME = 'riproute-client';
@@ -34,12 +36,25 @@ const SERVER_ENTRY_NAME = 'index';
 /**
  * The riproute Vite plugin.
  *
- * One entry in `plugins` gives you `.tsrx` compilation, file-based routes, an
- * SSR dev server and a two-environment production build. There is no
- * `ripple.config.ts` and no second plugin to order correctly.
+ * Add it alongside Ripple's own plugin, the way a TanStack Start app adds its
+ * framework plugin:
+ *
+ * ```ts
+ * plugins: [riproute(), ripple()];
+ * ```
+ *
+ * riproute does not wrap or vendor `ripple()` — that plugin owns `.tsrx`
+ * compilation, scoped CSS, HMR and the dependency scanner, and it stays the
+ * consumer's to configure. riproute contributes routing, SSR and the build.
+ * Ordering does not matter: everything here is `enforce: 'pre'`, and Ripple's
+ * compile step is not.
  */
 export function riproute(userOptions: RiprouteOptions = {}): Plugin[] {
-	return [tsrxPlugin(), corePlugin(userOptions)];
+	return [
+		titleRewritePlugin(),
+		serverGuardPlugin(userOptions.serverOnly),
+		corePlugin(userOptions),
+	];
 }
 
 export default riproute;
@@ -131,6 +146,7 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			config = resolved;
 			options = resolveOptions(userOptions, resolved.root);
 
+			warnAboutRippleConfig(resolved.root);
 			rescan();
 		},
 
@@ -226,6 +242,33 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			await fs.writeFile(path.join(options.clientOutDir, 'index.html'), html, 'utf-8');
 		},
 	};
+}
+
+/**
+ * Warns when the app has a `ripple.config.ts`.
+ *
+ * riproute never reads one, but its mere existence switches
+ * `@ripple-ts/vite-plugin` into metaframework mode: it loads the file, builds a
+ * router from it, and registers an SSR middleware *ahead* of Vite's own stack —
+ * ahead of riproute's, which installs after Vite's on purpose. Requests then get
+ * answered by the wrong router, and the symptom is a dev server that serves HTML
+ * for `/@vite/client` and a page that never hydrates. That took a long time to
+ * diagnose once; it should not have to happen twice.
+ */
+function warnAboutRippleConfig(root: string): void {
+	const candidates = ['ripple.config.ts', 'ripple.config.js', 'ripple.config.mjs'];
+	const found = candidates.find((name) => existsSync(path.join(root, name)));
+
+	if (found === undefined) return;
+
+	// eslint-disable-next-line no-console
+	console.warn(
+		`\n[riproute] Found ${found}.\n` +
+			'  riproute does not read it, but @ripple-ts/vite-plugin does, and having one\n' +
+			'  puts that plugin in charge of routing — its dev middleware runs before\n' +
+			"  Vite's own and will intercept requests riproute expects to answer.\n" +
+			'  Delete it, or move its settings into vite.config.ts.\n'
+	);
 }
 
 /** Collects the stylesheets an entry chunk and its imports pull in. */

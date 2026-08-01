@@ -22,6 +22,7 @@ export function createRouterApp(props: RouterProps): Component {
 			fallback={props.fallback}
 			title={props.title}
 			static={props.static}
+			onTitle={props.onTitle}
 		/>
 	}
 

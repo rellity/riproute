@@ -10,7 +10,9 @@ import { chromium } from 'playwright';
  */
 export async function runChecks(baseUrl, label) {
 	const browser = await chromium.launch({
-		executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium',
+		...(process.env.CHROMIUM_PATH === undefined
+			? {}
+			: { executablePath: process.env.CHROMIUM_PATH }),
 	});
 	const page = await browser.newPage();
 
@@ -73,22 +75,35 @@ export async function runChecks(baseUrl, label) {
 	await page.waitForSelector('h1:has-text("User 42")', { timeout: 5000 });
 	check('param route renders on navigate', true);
 	check('navigation is client-side', loads === before, `full loads: ${loads - before}`);
+	check('<title replace> takes over', (await page.title()) === 'User 42');
 
 	await page.click('a[href="/files/a/b/c"]');
 	await page.waitForSelector('h1:has-text("Files: a/b/c")', { timeout: 5000 });
 	check('splat route renders on navigate', true);
+	check('a bare <title> replaces too', (await page.title()) === 'Files');
+
+	await page.click('a[href="/about"]');
+	await page.waitForSelector('h1:has-text("About")', { timeout: 5000 });
+	check('&title expands on the client', (await page.title()) === 'About | riproute');
+	check('still exactly one <title>', (await page.locator('title').count()) === 1);
 
 	await page.click('a[href="/nope"]');
 	await page.waitForSelector('h1:has-text("Nothing here")', { timeout: 5000 });
 	check('catch-all route renders on navigate', true);
+	check('title falls back when a route claims none', (await page.title()) === 'riproute');
 
 	await page.goBack();
-	await page.waitForSelector('h1:has-text("Files: a/b/c")', { timeout: 5000 });
+	await page.waitForSelector('h1:has-text("About")', { timeout: 5000 });
 	check('back button restores the previous route', true);
+
+	await page.goForward();
+	await page.waitForSelector('h1:has-text("Nothing here")', { timeout: 5000 });
+	await page.goBack();
+	await page.waitForSelector('h1:has-text("About")', { timeout: 5000 });
 
 	check(
 		'active link tracks the location',
-		(await page.getAttribute('a[href="/files/a/b/c"]', 'class')) === 'active'
+		(await page.getAttribute('a[href="/about"]', 'class')) === 'active'
 	);
 
 	await browser.close();

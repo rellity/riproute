@@ -10,7 +10,6 @@ import { normalizeBase, parseLocation, stripBase, withBase } from '../utils/loca
 import { matchRoutes, normalizeRoutePath } from '../utils/match-routes';
 import navigateTo from '../utils/navigate-to';
 import { Outlet } from './outlet.tsrx';
-import { TitleHead } from './title-head.tsrx';
 
 /**
  * Works out the location `<Router>` should start from.
@@ -101,6 +100,13 @@ export function Router(props: RouterProps) @{
 			untrack(() => {
 				titleEntry.value = { match: match.value, text };
 			});
+
+			// The server has no second chance: effects never run, and Ripple's
+			// `<head>` block only defers when it sits in the component passed to
+			// `render()` — one level up from here, where the router state does
+			// not exist yet. So the title is handed straight to the SSR handler,
+			// which owns the document and writes the single <title> itself.
+			props.onTitle?.(text);
 		},
 		navigate(to, options) {
 			navigateTo(withBase(to, base), options);
@@ -108,6 +114,9 @@ export function Router(props: RouterProps) @{
 	};
 
 	RouterContext.set(state);
+
+	// A route that claims nothing still gets the base title.
+	props.onTitle?.(props.title);
 
 	// In the browser the title is assigned rather than rendered: `document.title`
 	// updates whichever <title> the document already has, so there is never a
@@ -138,11 +147,5 @@ export function Router(props: RouterProps) @{
 
 	const shell = track<Component>(() => props.root ?? Outlet);
 
-	<>
-		@if (!IS_BROWSER) {
-			<TitleHead />
-		}
-
-		<{shell} />
-	</>
+	<{shell} />
 }

@@ -32,6 +32,11 @@
 			"import": "./src/server/index.ts",
 			"default": "./src/server/index.ts"
 		},
+		"./server-only": {
+			"types": "./types/server-only.d.ts",
+			"import": "./src/server-only.ts",
+			"default": "./src/server-only.ts"
+		},
 		"./adapter-node": {
 			"types": "./dist/adapter-node/index.d.ts",
 			"import": "./dist/adapter-node/index.js",
@@ -49,6 +54,7 @@
 	],
 	"license": "MIT",
 	"devDependencies": {
+		"@ripple-ts/vite-plugin": "^0.3.118",
 		"@types/node": "^24.3.0",
 		"jsdom": "^26.0.0",
 		"playwright": "^1.62.1",
@@ -60,6 +66,7 @@
 		"vitest": "^3.2.4"
 	},
 	"peerDependencies": {
+		"@ripple-ts/vite-plugin": "^0.3.118",
 		"ripple": "^0.3.118",
 		"vite": "^6 || ^7"
 	}

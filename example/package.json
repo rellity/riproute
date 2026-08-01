@@ -12,6 +12,7 @@
 		"riproute": "file:.."
 	},
 	"devDependencies": {
+		"@ripple-ts/vite-plugin": "^0.3.118",
 		"vite": "^7.1.4"
 	}
 }

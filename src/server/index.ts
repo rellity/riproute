@@ -5,7 +5,7 @@ import { createRouterApp } from '../create-router-app.tsrx';
 import type { RouteDefinition } from '../types/index';
 import { normalizeBase, stripBase } from '../utils/location';
 import { matchRoutes, normalizeRoutePath } from '../utils/match-routes';
-import { BODY_MARKER, HEAD_MARKER, fillTemplate, splitTemplate } from './html';
+import { BODY_MARKER, HEAD_MARKER, escapeHtml, fillTemplate, splitTemplate } from './html';
 import type { PageTemplate } from './html';
 
 export { BODY_MARKER, HEAD_MARKER, splitTemplate, fillTemplate };
@@ -95,6 +95,10 @@ export function createHandler(options: HandlerOptions): RiprouteHandler {
 					rootId
 				);
 
+			// The last claim wins, and the router reports the base title up front,
+			// so this holds the right value by the time the render finishes.
+			let title = options.title;
+
 			const app = createRouterApp({
 				routes: options.routes,
 				root: options.root,
@@ -103,12 +107,15 @@ export function createHandler(options: HandlerOptions): RiprouteHandler {
 				title: options.title,
 				url: url.pathname + url.search,
 				static: true,
+				onTitle(next) {
+					title = next;
+				},
 			});
 
 			const { head, body, css } = await render(app);
 			const styles = renderCss(css);
 
-			return new Response(fillTemplate(template, head + styles, body), {
+			return new Response(fillTemplate(template, renderTitle(title) + head + styles, body), {
 				status,
 				headers: HTML_HEADERS,
 			});
@@ -122,6 +129,17 @@ export function createHandler(options: HandlerOptions): RiprouteHandler {
 			throw error;
 		}
 	};
+}
+
+/**
+ * Renders the one `<title>` the document gets.
+ *
+ * Written here rather than by a component so there is exactly one, always: the
+ * handler owns the head, so nothing downstream can add a second or reorder it
+ * against the rest of the document.
+ */
+function renderTitle(title: string | undefined): string {
+	return title === undefined || title === '' ? '' : `<title>${escapeHtml(title)}</title>`;
 }
 
 /**

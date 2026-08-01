@@ -1,3 +1,6 @@
 export default function About() @{
-	<h1>{'About'}</h1>
+	<div>
+		<title append>{'About | &title'}</title>
+		<h1>{'About'}</h1>
+	</div>
 }

@@ -108,6 +108,18 @@ export type RouterProps = {
 	title?: string;
 	/** Never read from or write to `window.history`. Useful for tests. */
 	static?: boolean;
+	/**
+	 * Called with the resolved document title whenever a route claims one.
+	 *
+	 * This is how SSR gets a title at all. Effects never run on the server, and
+	 * Ripple's `<head>` block only defers its contents when it sits in the very
+	 * component handed to `render()` — one level above `<Router>`, where the
+	 * router state does not exist yet. So the title is reported outwards and the
+	 * SSR handler, which already owns the document, writes the single `<title>`.
+	 * In the browser the router assigns `document.title` directly and this is
+	 * just a notification.
+	 */
+	onTitle?: (title: string | undefined) => void;
 };
 
 export type RouteComponentProps<T extends string = string> = {

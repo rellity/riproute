@@ -127,9 +127,15 @@ describe('SSR', () => {
 		expect(await render_to_string(Second)).toBe('<div>Not found</div>');
 	});
 
-	it('emits no <title> when nothing asks for one', async () => {
+	// The `<title>` itself is written by the SSR handler, not by a component —
+	// see `tests/server/title.test.tsrx`. Ripple's `<head>` block only defers
+	// its contents when it sits in the component handed to `render()`, which is
+	// one level above `<Router>`, so a title claimed by a route would have been
+	// flushed before the route ever made it. The router reports the title
+	// outwards instead.
+	it('writes nothing into the head itself', async () => {
 		function App() @{
-			<Router url="/" routes={routes} />
+			<Router url="/" routes={routes} title="Sample" />
 		}
 
 		const { head } = await render(App as never);
@@ -137,14 +143,15 @@ describe('SSR', () => {
 		expect(head.replace(/<!--[^>]*-->/g, '')).toBe('');
 	});
 
-	it('emits the router title as a single <title>', async () => {
+	it('reports the title through onTitle', async () => {
+		const seen: (string | undefined)[] = [];
+
 		function App() @{
-			<Router url="/" routes={routes} title="Sample" />
+			<Router url="/" routes={routes} title="Sample" onTitle={(t) => seen.push(t)} />
 		}
 
-		const { head } = await render(App as never);
+		await render(App as never);
 
-		expect(head.replace(/<!--[^>]*-->/g, '')).toBe('<title>Sample</title>');
-		expect(head.match(/<title>/g)).toHaveLength(1);
+		expect(seen).toEqual(['Sample']);
 	});
 });

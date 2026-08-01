@@ -4,6 +4,7 @@ export { Outlet } from './components/outlet.tsrx';
 export { Link } from './components/link.tsrx';
 export { Redirect } from './components/redirect.tsrx';
 export { NotFound } from './components/not-found.tsrx';
+export { Title } from './components/title.tsrx';
 
 export { default as navigateTo } from './utils/navigate-to';
 export { defineRoutes } from './utils/define-routes';

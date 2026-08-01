@@ -14,8 +14,11 @@ import { resolveTitle } from '../utils/title';
 export function Title(props: TitleProps) @{
 	const router = requireRouter('<title>');
 
+	// The rewrite passes `text` through as whatever expression the author wrote,
+	// so at runtime it can be a number or a nullish lookup. Coerce before
+	// `resolveTitle` goes looking for `&title` inside it.
 	const resolved = track(() =>
-		resolveTitle(props.text, router.baseTitle, {
+		resolveTitle(String(props.text ?? ''), router.baseTitle, {
 			mode: props.append === true && props.replace !== true ? 'append' : 'replace',
 			separator: props.separator,
 		})

@@ -1,5 +1,9 @@
 import path from 'node:path';
 
+import type { ServerOnlyOptions } from './server-guard';
+
+export type { ServerOnlyOptions };
+
 export type RiprouteOptions = {
 	/**
 	 * Directory scanned for route files. Relative to the Vite root.
@@ -25,6 +29,8 @@ export type RiprouteOptions = {
 	clientOutDir?: string;
 	/** Server build output directory, relative to the Vite root. */
 	serverOutDir?: string;
+	/** Tune which modules the client bundle refuses to import. */
+	serverOnly?: ServerOnlyOptions;
 };
 
 export type ResolvedRiprouteOptions = {

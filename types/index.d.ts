@@ -10,7 +10,7 @@
  * Keep in sync with `src/index.ts`.
  */
 import type { Component } from 'ripple';
-import type { LinkProps, RedirectProps, RouterProps } from '../src/types/index';
+import type { LinkProps, RedirectProps, RouterProps, TitleProps } from '../src/types/index';
 
 // ---------------------------------------------------------------------------
 // Components
@@ -36,6 +36,15 @@ export declare function Redirect(props: RedirectProps): void;
 
 /** The built-in fallback rendered when nothing matches. */
 export declare function NotFound(): void;
+
+/**
+ * Claims the document title for the route it renders in.
+ *
+ * Written as a literal `<title append>{'home | &title'}</title>` in a route —
+ * the Vite plugin rewrites that into this. Usable directly if you need to build
+ * the text somewhere the rewrite cannot see.
+ */
+export declare function Title(props: TitleProps): void;
 
 // ---------------------------------------------------------------------------
 // Navigation, hooks and primitives
