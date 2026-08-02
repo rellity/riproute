@@ -93,24 +93,18 @@ async function transform(
 const CSS_ID = /\.(css|scss|sass|less|styl|stylus|pcss|postcss)(\?|$)/;
 
 /**
- * Inlines the CSS of every module the app's SSR graph reaches.
+ * The CSS module ids reachable from the handler in the SSR module graph.
  *
- * In dev, stylesheets normally arrive as JS: the client entry loads, each CSS
- * module injects a <style> tag, and everything before that moment paints
- * unstyled — the classic dev-only flash on a server-rendered page. Production
- * has no such gap (the built document carries <link> tags), so dev inlines the
- * same CSS up front instead.
- *
- * The inlined copy is the *initial* paint only. The client's JS-injected
- * styles land later in the document, so at equal specificity they win, and
- * HMR keeps updating them — a stale inline copy can never override a fresh
- * edit.
+ * Split out from the inlining because nitro mode needs the list alone: there
+ * the handler runs inside nitro's environment runner, which can `?inline` the
+ * modules itself but has no way to see this graph. An empty answer is normal
+ * before the first render has populated it.
  */
-async function collectDevCss(server: ViteDevServer): Promise<string> {
+export function collectDevCssIds(server: ViteDevServer): string[] {
 	const graph = server.environments.ssr.moduleGraph;
 	const entry = graph.getModuleById(resolvedId(HANDLER_ID));
 
-	if (entry === undefined) return '';
+	if (entry === undefined) return [];
 
 	const seen = new Set<unknown>();
 	const ids: string[] = [];
@@ -128,6 +122,26 @@ async function collectDevCss(server: ViteDevServer): Promise<string> {
 	};
 
 	walk(entry as never);
+
+	return ids;
+}
+
+/**
+ * Inlines the CSS of every module the app's SSR graph reaches.
+ *
+ * In dev, stylesheets normally arrive as JS: the client entry loads, each CSS
+ * module injects a <style> tag, and everything before that moment paints
+ * unstyled — the classic dev-only flash on a server-rendered page. Production
+ * has no such gap (the built document carries <link> tags), so dev inlines the
+ * same CSS up front instead.
+ *
+ * The inlined copy is the *initial* paint only. The client's JS-injected
+ * styles land later in the document, so at equal specificity they win, and
+ * HMR keeps updating them — a stale inline copy can never override a fresh
+ * edit.
+ */
+async function collectDevCss(server: ViteDevServer): Promise<string> {
+	const ids = collectDevCssIds(server);
 
 	let out = '';
 

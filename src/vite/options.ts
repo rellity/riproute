@@ -45,6 +45,14 @@ export type RiprouteOptions = {
 	 * server is running, the way TanStack Start does. On by default.
 	 */
 	scaffold?: boolean;
+	/**
+	 * Serve through nitro instead of riproute's own `node:http` entry.
+	 *
+	 * Auto-detected: adding `nitro()` from `nitro/vite` to the plugin array
+	 * (after riproute) is enough. Set explicitly only to override the
+	 * detection.
+	 */
+	nitro?: boolean;
 };
 
 export type ResolvedRiprouteOptions = {

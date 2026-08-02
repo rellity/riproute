@@ -2,9 +2,10 @@ import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import type { Plugin, ResolvedConfig } from 'vite';
+import type { Plugin, ResolvedConfig, ViteBuilder } from 'vite';
 
-import { installDevMiddleware } from './dev-middleware';
+import { collectDevCssIds, installDevMiddleware } from './dev-middleware';
+import { hasNitroPlugin, nitroBeforeRiproute } from './nitro';
 import { resolveOptions } from './options';
 import type { ResolvedRiprouteOptions, RiprouteOptions } from './options';
 import { ROUTE_EXTENSIONS, scanRoutes } from './route-scan';
@@ -16,12 +17,15 @@ import { tsrxFallbackPlugin } from './tsrx-fallback';
 import { extractBaseTitle, titleRewritePlugin } from './title-rewrite';
 import {
 	CLIENT_ID,
+	DEV_CSS_IDS_PATH,
 	HANDLER_ID,
+	NITRO_ID,
 	ROUTES_ID,
 	SERVER_ID,
 	VIRTUAL_IDS,
 	generateClientModule,
 	generateHandlerModule,
+	generateNitroModule,
 	generateRoutesModule,
 	generateRoutesProxyModule,
 	generateServerModule,
@@ -29,7 +33,7 @@ import {
 } from './virtual-modules';
 
 export type { RiprouteOptions, ServerOnlyOptions } from './options';
-export { ROUTES_ID, CLIENT_ID, HANDLER_ID, SERVER_ID } from './virtual-modules';
+export { ROUTES_ID, CLIENT_ID, HANDLER_ID, SERVER_ID, NITRO_ID } from './virtual-modules';
 
 // Named `index`, so Vite names the built assets exactly as it would for a
 // plain index.html app: `assets/index-<hash>.js`. The prefix carried no
@@ -52,6 +56,10 @@ const SERVER_ENTRY_NAME = 'index';
  * riproute does not wrap or vendor `ripple()` — that plugin owns `.tsrx`
  * compilation, scoped CSS, HMR and the dependency scanner, and it stays the
  * consumer's to configure. riproute contributes routing, SSR and the build.
+ *
+ * With `nitro()` from `nitro/vite` at the end of the array, riproute detects
+ * it and serves through nitro instead of its own `node:http` entry — see
+ * `nitro.ts`.
  *
  * Ordering does not matter, but not for free: `ripple()`'s compile transform is
  * *also* `enforce: 'pre'`, so with `[ripple(), riproute()]` it would compile
@@ -81,6 +89,8 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 	let baseTitle: string | null = null;
 	/** `<script>`/`<link>` tags for the built client, filled in by the client build. */
 	let clientTags = '';
+	/** Whether nitro owns the server. See `nitro.ts` for how the wiring works. */
+	let nitroMode = false;
 
 	/**
 	 * Re-reads the base title from the root route.
@@ -135,10 +145,12 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			const root = path.resolve(userConfig.root ?? process.cwd());
 			const resolved = resolveOptions(userOptions, root);
 
-			return {
+			nitroMode = userOptions.nitro ?? hasNitroPlugin(userConfig.plugins);
+
+			const shared = {
 				// Vite's SPA fallback would answer every navigation with the raw
 				// index.html before the router ever sees the request.
-				appType: 'custom',
+				appType: 'custom' as const,
 				resolve: {
 					// Two copies of the Ripple runtime means two `active_component`
 					// bindings, and `Context.set()` throws against the wrong one.
@@ -155,6 +167,47 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 					// riproute loads its `.tsrx` outside Vite's transform.
 					noExternal: ['riproute'],
 				},
+				builder: {
+					async buildApp(builder: ViteBuilder) {
+						// Client first: the server entry reads the shell the client
+						// build writes, complete with hashed asset URLs. In nitro
+						// mode this runs right before nitro's own (post-ordered)
+						// buildApp hook, which skips environments already built here
+						// and goes on to produce `.output/`.
+						await builder.build(builder.environments.client);
+						await builder.build(builder.environments.ssr);
+					},
+				},
+			};
+
+			if (nitroMode) {
+				return {
+					...shared,
+					environments: {
+						client: {
+							build: {
+								// Output dirs are nitro's: the client lands in its
+								// public directory, the ssr service in its build dir.
+								assetsDir: resolved.assetsDir,
+								manifest: true,
+								rollupOptions: { input: { [CLIENT_ENTRY_NAME]: CLIENT_ID } },
+							},
+						},
+						ssr: {
+							build: {
+								// Nitro reads this input as its `ssr` service entry
+								// (the plugin array puts nitro after riproute, so its
+								// config hook sees the value planted here) and routes
+								// every page request to the module's `fetch`.
+								rollupOptions: { input: { index: NITRO_ID } },
+							},
+						},
+					},
+				};
+			}
+
+			return {
+				...shared,
 				environments: {
 					client: {
 						build: {
@@ -176,14 +229,6 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 						},
 					},
 				},
-				builder: {
-					async buildApp(builder) {
-						// Client first: the server entry reads the shell the client
-						// build writes, complete with hashed asset URLs.
-						await builder.build(builder.environments.client);
-						await builder.build(builder.environments.ssr);
-					},
-				},
 				build: env.isSsrBuild ? undefined : { outDir: resolved.clientOutDir },
 			};
 		},
@@ -191,6 +236,14 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 		async configResolved(resolved) {
 			config = resolved;
 			options = resolveOptions(userOptions, resolved.root);
+
+			if (nitroMode && nitroBeforeRiproute(resolved.plugins)) {
+				resolved.logger.warn(
+					'[riproute] nitro() comes before riproute() in `plugins`. Nitro reads ' +
+						'the ssr entry riproute plants during config resolution, so it has ' +
+						'to run after riproute — move nitro() to the end of the array.'
+				);
+			}
 
 			warnAboutRippleConfig(resolved.root);
 			rescan();
@@ -201,7 +254,7 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			return (VIRTUAL_IDS as readonly string[]).includes(id) ? resolvedId(id) : null;
 		},
 
-		load(id) {
+		async load(id) {
 			switch (id) {
 				case resolvedId(ROUTES_ID):
 					return options.routesModule !== null
@@ -221,6 +274,22 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 				case resolvedId(SERVER_ID):
 					return generateServerModule(options, clientTags);
+
+				case resolvedId(NITRO_ID): {
+					const dev = config.command === 'serve';
+
+					return generateNitroModule(options, {
+						dev,
+						base: config.base === '' ? '/' : config.base,
+						tags: clientTags,
+						// Baked into the bundle rather than written into nitro's
+						// public directory, where a static index.html would be
+						// served for `/` ahead of the renderer.
+						template: dev
+							? null
+							: await fs.readFile(options.template, 'utf-8').catch(() => null),
+					});
+				}
 
 				default:
 					return null;
@@ -298,6 +367,20 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			server.watcher.on('add', (file) => onRouteFileChange(file, true));
 			server.watcher.on('unlink', (file) => onRouteFileChange(file));
 
+			if (nitroMode) {
+				// Nitro's dev middleware answers the page requests; riproute's own
+				// SSR middleware would never see one. What the nitro entry cannot
+				// reach from inside the environment runner is the server-side
+				// module graph, so the CSS ids it inlines against FOUC are served
+				// from here. (Nitro skips `/__*` URLs, so this stays reachable.)
+				server.middlewares.use(DEV_CSS_IDS_PATH, (_req, res) => {
+					res.setHeader('content-type', 'application/json');
+					res.end(JSON.stringify(collectDevCssIds(server)));
+				});
+
+				return;
+			}
+
 			return installDevMiddleware(server, options);
 		},
 
@@ -330,6 +413,11 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 				),
 				`<script type="module" crossorigin src="${base}${entry.fileName}"></script>`,
 			].join('');
+
+			// In nitro mode the template is baked into the ssr service instead:
+			// an index.html in nitro's public directory would be served for `/`
+			// as a static asset, shadowing the renderer.
+			if (nitroMode) return;
 
 			const raw = await fs.readFile(options.template, 'utf-8').catch(() => null);
 

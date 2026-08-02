@@ -276,6 +276,7 @@ a page fails the client build instead of shipping your endpoint code.
 | `routes`       | —                       | Module exporting a `routes` array. Takes precedence over `routesDir`.  |
 | `hooks`        | `'src/hooks.server.ts'` | Module exporting `onRequest` / `onError`. `false` disables the lookup. |
 | `scaffold`     | `true`                  | Fill new empty route files with a template in dev.                     |
+| `nitro`        | auto                    | Serve through nitro. Detected from the plugin array; see below.        |
 | `template`     | `'index.html'`          | The HTML shell.                                                        |
 | `rootId`       | `'root'`                | Element the app renders into.                                          |
 | `base`         | `''`                    | Mount the app under a path prefix.                                     |
@@ -316,6 +317,35 @@ everything else, and the adapter underneath it is built for being exposed:
 Importing `dist/server/index.js` with `RIPROUTE_NO_LISTEN=1` set exports the
 bare `handler` and `server` instead of booting, for embedding in another
 process.
+
+### Nitro
+
+To deploy through [nitro](https://nitro.build) instead of the built-in
+`node:http` server, add its Vite plugin at the end of the array:
+
+```ts
+import { nitro } from 'nitro/vite';
+
+plugins: [riproute(), ripple(), nitro()];
+```
+
+That is the whole integration. riproute detects nitro and registers its
+request handler as nitro's SSR service; nitro then owns the server on both
+sides — its dev server in `vite dev`, and `vite build` producing a deployable
+`.output/` for whatever preset is configured (node, Cloudflare, Vercel, …)
+instead of `dist/`. Static assets, compression and process lifecycle are
+nitro's from there, riproute renders the pages, and everything else — routes,
+titles, hooks, the server-only guard — behaves identically. Nitro's own
+features (`server/api/` routes, storage, tasks) work as documented by nitro.
+
+Order matters: nitro reads the SSR entry riproute plants during config
+resolution, so `nitro()` must come **after** `riproute()` — riproute warns if
+it does not. The detection can be overridden with `riproute({ nitro: false })`.
+
+Two dev-mode notes. The very first page load after the server boots may paint
+before stylesheets are inlined (every later render has them); and plugins that
+inject HTML through `transformIndexHtml` are not consulted, because nitro's
+environment runner renders the document outside Vite's HTML pipeline.
 
 ## Notes on Ripple 0.3.118
 
