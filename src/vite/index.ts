@@ -9,6 +9,7 @@ import { resolveOptions } from './options';
 import type { ResolvedRiprouteOptions, RiprouteOptions } from './options';
 import { ROUTE_EXTENSIONS, scanRoutes } from './route-scan';
 import type { DiscoveredRoutes } from './route-scan';
+import { isScaffoldable, scaffoldRoute } from './scaffold';
 import { normalizeId } from './package-root';
 import { serverGuardPlugin } from './server-guard';
 import { tsrxFallbackPlugin } from './tsrx-fallback';
@@ -229,11 +230,51 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 		configureServer(server) {
 			if (options.routesDir !== null) server.watcher.add(options.routesDir);
 
-			const onRouteFileChange = (file: string) => {
+			/**
+			 * Fills a freshly created, still-empty route file with a working
+			 * template — TanStack Start's create-a-file workflow. Guarded hard on
+			 * emptiness: a populated file arriving in the watcher is real work
+			 * (a git checkout, a paste) and is never touched.
+			 */
+			const maybeScaffold = async (file: string): Promise<void> => {
+				if (userOptions.scaffold === false || options.routesDir === null) return;
+				if (!isScaffoldable(file)) return;
+
+				try {
+					const stats = await fs.stat(file);
+
+					// An editor that saved content before the watcher fired.
+					if (stats.size > 0) return;
+
+					const template = scaffoldRoute(file, options.routesDir);
+
+					if (template === null) return;
+
+					await fs.writeFile(file, template, { flag: 'wx' }).catch(async () => {
+						// The file exists (we just statted it) so `wx` refuses;
+						// re-check emptiness at the last moment and write over
+						// nothing but nothing.
+						if ((await fs.readFile(file, 'utf-8')) === '') {
+							await fs.writeFile(file, template);
+						}
+					});
+
+					config.logger.info(`riproute: scaffolded ${path.relative(config.root, file)}`, {
+						timestamp: true,
+					});
+				} catch {
+					// A vanished file or an unreadable one — nothing to scaffold.
+				}
+			};
+
+			const onRouteFileChange = (file: string, added = false) => {
 				if (options.routesDir === null) return;
 				// Chokidar emits native separators; compare in posix on both sides.
 				if (!normalizeId(file).startsWith(`${normalizeId(options.routesDir)}/`)) return;
 				if (!ROUTE_EXTENSIONS.includes(path.extname(file))) return;
+
+				if (added) void maybeScaffold(file);
+
 				if (!rescan()) return;
 
 				const module = server.environments.client.moduleGraph.getModuleById(
@@ -254,8 +295,8 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 				server.hot.send({ type: 'full-reload' });
 			};
 
-			server.watcher.on('add', onRouteFileChange);
-			server.watcher.on('unlink', onRouteFileChange);
+			server.watcher.on('add', (file) => onRouteFileChange(file, true));
+			server.watcher.on('unlink', (file) => onRouteFileChange(file));
 
 			return installDevMiddleware(server, options);
 		},

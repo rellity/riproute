@@ -40,6 +40,11 @@ export type RiprouteOptions = {
 	serverOutDir?: string;
 	/** Tune which modules the client bundle refuses to import. */
 	serverOnly?: ServerOnlyOptions;
+	/**
+	 * Write a working template into a new *empty* route file while the dev
+	 * server is running, the way TanStack Start does. On by default.
+	 */
+	scaffold?: boolean;
 };
 
 export type ResolvedRiprouteOptions = {
