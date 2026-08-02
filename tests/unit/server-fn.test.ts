@@ -59,6 +59,22 @@ describe('collectServerFnExports', () => {
 		expect(await collect(withDefault)).toEqual(['default']);
 		expect(await collect('export const db = { query() {} };\n')).toEqual([]);
 	});
+
+	it('finds the builder chain form', async () => {
+		const source = [
+			"import { serverFn } from 'riproute/server';",
+			'',
+			'export const addTodo = serverFn()',
+			'\t.middleware([(event, next) => next()])',
+			'\t.handler(async (text: string) => text);',
+			'',
+			'export const bare = serverFn().handler(async () => 1);',
+			'export default serverFn().handler(async () => 2);',
+			"export const other = fetch('/x').then((r) => r);",
+		].join('\n');
+
+		expect(await collect(source)).toEqual(['addTodo', 'bare', 'default']);
+	});
 });
 
 describe('generateServerFnProxyModule', () => {
@@ -172,6 +188,121 @@ describe('getRequestEvent', () => {
 		const request = new Request('http://test/page');
 
 		expect(withRequestEvent(request, () => getRequestEvent().request)).toBe(request);
+	});
+});
+
+describe('serverFn builder', () => {
+	const request = new Request('http://test/_riproute/rpc');
+	const inRequest = <T>(run: () => T) => withRequestEvent(request, run);
+
+	it('runs middleware in order, around the handler', async () => {
+		const order: string[] = [];
+
+		const fn = serverFn()
+			.middleware([
+				async (_event, next) => {
+					order.push('a:before');
+
+					const result = await next();
+
+					order.push('a:after');
+
+					return result;
+				},
+				(_event, next) => {
+					order.push('b');
+
+					return next();
+				},
+			])
+			.handler(async (value: number) => {
+				order.push('handler');
+
+				return value * 2;
+			});
+
+		expect(await inRequest(() => fn(21))).toBe(42);
+		expect(order).toEqual(['a:before', 'b', 'handler', 'a:after']);
+	});
+
+	it('passes locals from middleware to the handler', async () => {
+		const fn = serverFn()
+			.middleware([
+				(event, next) => {
+					event.locals.user = 'ada';
+
+					return next();
+				},
+			])
+			.handler(async () => getRequestEvent().locals.user);
+
+		expect(await inRequest(() => fn())).toBe('ada');
+	});
+
+	it('short-circuits when middleware never calls next', async () => {
+		let ran = false;
+
+		const fn = serverFn()
+			.middleware([() => 'blocked'])
+			.handler(async () => {
+				ran = true;
+
+				return 'handled';
+			});
+
+		expect(await inRequest(() => fn())).toBe('blocked');
+		expect(ran).toBe(false);
+	});
+
+	it('a middleware throw fails the call', async () => {
+		const fn = serverFn()
+			.middleware([
+				() => {
+					throw new Error('unauthorized');
+				},
+			])
+			.handler(async () => 'never');
+
+		await expect(inRequest(() => fn())).rejects.toThrow('unauthorized');
+	});
+
+	it('calling next twice is an error', async () => {
+		const fn = serverFn()
+			.middleware([
+				async (_event, next) => {
+					await next();
+
+					return next();
+				},
+			])
+			.handler(async () => 1);
+
+		await expect(inRequest(() => fn())).rejects.toThrow(/next\(\) was called twice/);
+	});
+
+	it('the builder result is dispatchable like the shorthand', async () => {
+		const fn = serverFn()
+			.middleware([
+				(event, next) => {
+					event.locals.suffix = '!';
+
+					return next();
+				},
+			])
+			.handler(async (name: string) => `hi ${name}${getRequestEvent().locals.suffix}`);
+
+		const dispatch = createServerFnDispatch({
+			'src/a.server.ts': async () => ({ fn }),
+		});
+
+		const response = await dispatch(
+			new Request('http://test/_riproute/rpc', {
+				method: 'POST',
+				body: JSON.stringify({ id: 'src/a.server.ts#fn', args: ['ada'] }),
+			})
+		);
+
+		expect(await response?.json()).toEqual({ ok: true, result: 'hi ada!' });
 	});
 });
 

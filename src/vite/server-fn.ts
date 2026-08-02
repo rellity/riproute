@@ -29,10 +29,12 @@ type Node = Record<string, any>;
 /**
  * The names exported as `serverFn(...)` calls, statically.
  *
- * Only initializers that call a binding imported as `serverFn` from
+ * Only initializers rooted in a call to a binding imported as `serverFn` from
  * `'riproute/server'` count — a local function that happens to share the name
- * does not. Covers `export const x = serverFn(...)` (multi-declarator too) and
- * `export default serverFn(...)`; anything fancier can re-export a const.
+ * does not. Covers `export const x = serverFn(...)`, the builder chain
+ * `export const x = serverFn().middleware(m).handler(fn)` (multi-declarator
+ * too) and `export default serverFn(...)`; anything fancier can re-export a
+ * const.
  */
 export async function collectServerFnExports(source: string, filename: string): Promise<string[]> {
 	// Cheap gate before parsing: no mention, no exports.
@@ -60,10 +62,32 @@ export async function collectServerFnExports(source: string, filename: string): 
 
 	if (aliases.size === 0) return [];
 
-	const isServerFnCall = (node: Node | null | undefined): boolean =>
-		node?.type === 'CallExpression' &&
-		node.callee?.type === 'Identifier' &&
-		aliases.has(node.callee.name as string);
+	// `serverFn(fn)` and the builder chain `serverFn().middleware(m).handler(fn)`
+	// both count: walk member-call chains down to the innermost callee.
+	const rootCalleeName = (node: Node | null | undefined): string | null => {
+		let current = node;
+
+		while (current?.type === 'CallExpression') {
+			const callee = current.callee as Node | undefined;
+
+			if (callee?.type === 'Identifier') return callee.name as string;
+
+			if (callee?.type === 'MemberExpression') {
+				current = callee.object as Node;
+				continue;
+			}
+
+			return null;
+		}
+
+		return null;
+	};
+
+	const isServerFnCall = (node: Node | null | undefined): boolean => {
+		const name = rootCalleeName(node);
+
+		return name !== null && aliases.has(name);
+	};
 
 	const names: string[] = [];
 

@@ -25,18 +25,96 @@ const MARKER = Symbol.for('riproute.serverFn');
 export type RequestEvent = {
 	/** The request being served — the RPC call, or the page being rendered. */
 	request: Request;
+	/**
+	 * Per-request scratch space. Middleware writes here — a session, a user —
+	 * and the handler reads it back through `getRequestEvent()`.
+	 */
+	locals: Record<string, unknown>;
+};
+
+/**
+ * Around-style middleware: runs before the handler, decides whether to
+ * continue. Call `next()` to run the rest of the chain (its value is the
+ * handler's result, yours to pass through or replace); return without calling
+ * it to short-circuit; throw to fail the call.
+ */
+export type ServerFnMiddleware = (event: RequestEvent, next: () => Promise<unknown>) => unknown;
+
+export type ServerFnBuilder = {
+	/** Adds middleware, run in the order given, before the handler. */
+	middleware(middleware: readonly ServerFnMiddleware[]): ServerFnBuilder;
+	/** Sets the function itself and returns it, callable and typed as written. */
+	handler<T extends (...args: never[]) => unknown>(fn: T): T;
 };
 
 const storage = new AsyncLocalStorage<RequestEvent>();
 
 /**
- * Marks a function as callable from the browser.
+ * Declares a server function, TanStack Start style:
  *
- * Returns the function unchanged (same identity, same type), so server-side
- * callers pay nothing and the client's stub carries the original signature.
- * Arguments and return value cross the wire as JSON — keep them plain data.
+ * ```ts
+ * export const addTodo = serverFn()
+ * 	.middleware([requireUser])
+ * 	.handler(async (text: string) => db.todos.insert(text));
+ * ```
+ *
+ * The handler keeps its own signature — `addTodo('milk')`, arguments typed and
+ * checked, not a `data` envelope. `serverFn(fn)` stays as shorthand for a
+ * function with no middleware. Arguments and return value cross the wire as
+ * JSON — keep them plain data.
+ *
+ * Middleware runs wherever the function is called — an RPC call from the
+ * browser or a direct call on the server — always inside the request context,
+ * so an auth check guards both doors.
  */
-export function serverFn<T extends (...args: never[]) => unknown>(fn: T): T {
+export function serverFn(): ServerFnBuilder;
+export function serverFn<T extends (...args: never[]) => unknown>(fn: T): T;
+export function serverFn<T extends (...args: never[]) => unknown>(fn?: T): T | ServerFnBuilder {
+	if (fn !== undefined) return mark(fn);
+
+	const middlewares: ServerFnMiddleware[] = [];
+
+	const builder: ServerFnBuilder = {
+		middleware(more) {
+			middlewares.push(...more);
+
+			return builder;
+		},
+
+		handler(handlerFn) {
+			if (middlewares.length === 0) return mark(handlerFn);
+
+			const chain = [...middlewares];
+
+			const composed = (...args: never[]) => {
+				const event = getRequestEvent();
+				let called = -1;
+
+				// `async`, so a middleware that throws synchronously rejects like
+				// one that throws after an await, and callers see one behaviour.
+				const run = async (index: number): Promise<unknown> => {
+					if (index <= called) {
+						throw new Error('[riproute] next() was called twice in middleware.');
+					}
+
+					called = index;
+
+					return index < chain.length
+						? chain[index](event, () => run(index + 1))
+						: handlerFn(...args);
+				};
+
+				return run(0);
+			};
+
+			return mark(composed as never as typeof handlerFn);
+		},
+	};
+
+	return builder;
+}
+
+function mark<T extends (...args: never[]) => unknown>(fn: T): T {
 	(fn as Record<PropertyKey, unknown>)[MARKER] = true;
 
 	return fn;
@@ -69,7 +147,7 @@ export function getRequestEvent(): RequestEvent {
 
 /** Opens the request context around `run`. Used by the handler and the dispatch. */
 export function withRequestEvent<T>(request: Request, run: () => T): T {
-	return storage.run({ request }, run);
+	return storage.run({ request, locals: {} }, run);
 }
 
 type Loaders = Record<string, () => Promise<Record<string, unknown>>>;

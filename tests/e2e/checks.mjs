@@ -115,6 +115,8 @@ export async function runChecks(baseUrl, label) {
 		(await page.getAttribute('a[href="/about"]', 'class')) === 'active'
 	);
 
+	const rpcMessages = messages.length;
+
 	await page.goto(`${baseUrl}/rpc`, { waitUntil: 'networkidle' });
 	await page.click('button:has-text("Call greet()")');
 	await page.waitForFunction(
@@ -126,6 +128,23 @@ export async function runChecks(baseUrl, label) {
 		'server function round-trips',
 		(await page.textContent('#rpc-reply')) === 'Hello, riproute! via /_riproute/rpc',
 		await page.textContent('#rpc-reply')
+	);
+
+	// The load-on-mount pattern from the docs: an effect calling a server
+	// function once hydrated. Also proves an effect in a route body does not
+	// desync hydration.
+	await page.waitForFunction(
+		() => document.getElementById('rpc-auto')?.textContent === 'Hello, effect!',
+		undefined,
+		{ timeout: 5000 }
+	);
+	check('server function loads on mount via effect', true);
+	check(
+		'rpc page hydrates clean',
+		!messages
+			.slice(rpcMessages)
+			.some((m) => m.includes('Hydration failed') || m.startsWith('pageerror')),
+		messages.slice(rpcMessages).join(' | ')
 	);
 
 	await browser.close();

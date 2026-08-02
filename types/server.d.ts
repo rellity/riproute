@@ -54,13 +54,30 @@ export declare function createHandler(options: HandlerOptions): RiprouteHandler;
 export type RequestEvent = {
 	/** The request being served — the RPC call, or the page being rendered. */
 	request: Request;
+	/** Per-request scratch space: middleware writes, the handler reads. */
+	locals: Record<string, unknown>;
 };
 
 /**
- * Marks a function exported from a `*.server.ts` file as callable from the
- * browser. Returns the function unchanged; arguments and result cross the
- * wire as JSON.
+ * Around-style middleware: call `next()` to continue (its value is the
+ * handler's result), return without calling it to short-circuit, throw to
+ * fail the call.
  */
+export type ServerFnMiddleware = (event: RequestEvent, next: () => Promise<unknown>) => unknown;
+
+export type ServerFnBuilder = {
+	/** Adds middleware, run in the order given, before the handler. */
+	middleware(middleware: readonly ServerFnMiddleware[]): ServerFnBuilder;
+	/** Sets the function itself and returns it, callable and typed as written. */
+	handler<T extends (...args: never[]) => unknown>(fn: T): T;
+};
+
+/**
+ * Declares a function in a `*.server.ts` file as callable from the browser:
+ * `serverFn().middleware([...]).handler(fn)`, or `serverFn(fn)` as shorthand
+ * when there is no middleware. Arguments and result cross the wire as JSON.
+ */
+export declare function serverFn(): ServerFnBuilder;
 export declare function serverFn<T extends (...args: never[]) => unknown>(fn: T): T;
 
 /**

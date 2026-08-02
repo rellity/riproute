@@ -251,33 +251,73 @@ riproute({
 
 ## Server functions
 
-The sanctioned way across the server boundary. Wrap a function in `serverFn()`
-inside any `*.server.ts` file and it becomes callable from everywhere — on the
-server the call is direct, and in the browser the import turns into a typed
-stub that POSTs to `/_riproute/rpc`, where riproute runs the real thing:
+The sanctioned way across the server boundary. Declare a function with
+`serverFn()` inside any `*.server.ts` file and it becomes callable from
+everywhere — on the server the call is direct, and in the browser the import
+turns into a typed stub that POSTs to `/_riproute/rpc`, where riproute runs
+the real thing:
 
 ```ts
 // src/lib/todos.server.ts
 import { serverFn, getRequestEvent } from 'riproute/server';
+import type { ServerFnMiddleware } from 'riproute/server';
 
-export const addTodo = serverFn(async (text: string) => {
-	const { request } = getRequestEvent(); // cookies, headers
+const requireUser: ServerFnMiddleware = async (event, next) => {
+	const user = await sessionUser(event.request); // cookies, headers
 
-	return db.todos.insert(text);
-});
+	if (user === null) throw new Error('unauthorized');
+
+	event.locals.user = user; // handed to the handler
+
+	return next();
+};
+
+export const addTodo = serverFn()
+	.middleware([requireUser])
+	.handler(async (text: string) => {
+		const { locals } = getRequestEvent();
+
+		return db.todos.insert(locals.user, text);
+	});
+
+// no middleware? the shorthand skips the builder:
+export const listTodos = serverFn(async () => db.todos.all());
 ```
 
-```tsrx
-// any route — same import on both sides
-import { addTodo } from '../lib/todos.server';
+Calling one from a route is just an import — there is no client API. In the
+browser bundle the import is a stub; during SSR it is the real function:
 
-const todo = await addTodo('hello');
+```tsrx
+import { track, effect } from 'ripple';
+import { addTodo, listTodos } from '../lib/todos.server';
+
+export default function Todos() @{
+	let todos = track([]);
+
+	// Effects never run during SSR, so this fetches once, in the browser.
+	effect(() => {
+		void listTodos().then((loaded) => (todos.value = loaded));
+	});
+
+	<div>
+		<button onClick={async () => {
+			await addTodo('hello');
+			todos.value = await listTodos();
+		}}>{'Add'}</button>
+	</div>
+}
 ```
 
 Types flow through untouched: TypeScript checks the call against the source
 module, so `addTodo` keeps its signature and a wrong argument is a type error
 in the editor, not a runtime surprise. Arguments and results cross the wire as
 JSON — keep them plain data.
+
+Middleware is around-style: it runs before the handler wherever the function
+is called (RPC or direct), in the order given. Call `next()` to continue —
+its value is the handler's result, yours to pass through or replace — return
+without calling it to short-circuit, or throw to fail the call. `event.locals`
+is per-request scratch space shared with the handler.
 
 The wrapper is the security boundary, not ceremony. Only `serverFn()` exports
 exist in the browser's view of the module: importing anything else from a

@@ -1,4 +1,4 @@
-import { track } from 'ripple';
+import { effect, track } from 'ripple';
 import { greet } from '../lib/greeting.server';
 
 /**
@@ -7,6 +7,17 @@ import { greet } from '../lib/greeting.server';
  */
 export default function Rpc() @{
 	let reply = track('');
+	let auto = track('');
+
+	// Effects never run during SSR, so this is the load-on-mount pattern:
+	// the page server-renders empty and fills in once hydrated.
+	effect(() => {
+		if (auto.value !== '') return;
+
+		void greet('effect').then((result) => {
+			auto.value = result.message;
+		});
+	});
 
 	<div>
 		<title append>{'server functions'}</title>
@@ -19,5 +30,6 @@ export default function Rpc() @{
 			}}
 		>{'Call greet()'}</button>
 		<p id="rpc-reply">{reply.value}</p>
+		<p id="rpc-auto">{auto.value}</p>
 	</div>
 }
