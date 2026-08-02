@@ -254,8 +254,11 @@ riproute({
 The sanctioned way across the server boundary. Declare a function with
 `serverFn()` inside any `*.server.ts` file and it becomes callable from
 everywhere — on the server the call is direct, and in the browser the import
-turns into a typed stub that POSTs to `/_riproute/rpc`, where riproute runs
-the real thing:
+turns into a typed stub that POSTs to the function's own endpoint,
+`/__riproute/serverfn/<hash>`, where riproute runs the real thing. The hash is
+derived from the file and export name at build time, so calls are
+tellable-apart in the network tab while the app's file layout never appears in
+the client bundle:
 
 ```ts
 // src/lib/todos.server.ts

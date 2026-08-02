@@ -124,10 +124,13 @@ export async function runChecks(baseUrl, label) {
 		undefined,
 		{ timeout: 5000 }
 	);
+	// Each function gets its own endpoint: /__riproute/serverfn/<hash>.
+	const rpcReply = (await page.textContent('#rpc-reply')) ?? '';
+
 	check(
 		'server function round-trips',
-		(await page.textContent('#rpc-reply')) === 'Hello, riproute! via /_riproute/rpc',
-		await page.textContent('#rpc-reply')
+		/^Hello, riproute! via \/__riproute\/serverfn\/[0-9a-f]{16}$/.test(rpcReply),
+		rpcReply
 	);
 
 	// The load-on-mount pattern from the docs: an effect calling a server

@@ -17,9 +17,11 @@ export const LOCATION_PARAM = '__ripple_router_location';
 export const SPLAT_PARAM = '__ripple_router_rest';
 
 /**
- * The endpoint server-function calls go through.
+ * The URL prefix server-function calls go through.
  *
- * One fixed POST path for every function: the body says which function to
- * run, so riproute never has to negotiate URL space with the app's routes.
+ * Each function gets its own endpoint — `/__riproute/serverfn/<hash>` — with
+ * the hash derived from the function's file and export name at build time.
+ * Distinct URLs keep calls tellable-apart in the network tab, and the hash
+ * keeps the app's file layout out of the client bundle.
  */
-export const RPC_PATH = '/_riproute/rpc';
+export const SERVER_FN_PREFIX = '/__riproute/serverfn/';

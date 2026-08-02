@@ -4,7 +4,13 @@ import path from 'node:path';
 
 import type { Plugin, ResolvedConfig, ViteBuilder } from 'vite';
 
-import { collectDevCssIds, installDevMiddleware } from './dev-middleware';
+import { SERVER_FN_PREFIX } from '../constants';
+import {
+	collectDevCssIds,
+	installDevMiddleware,
+	sendResponse,
+	toWebRequest,
+} from './dev-middleware';
 import { hasNitroPlugin, nitroBeforeRiproute } from './nitro';
 import { resolveOptions } from './options';
 import type { ResolvedRiprouteOptions, RiprouteOptions } from './options';
@@ -385,15 +391,16 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 			/**
 			 * Keeps the server-function manifest in step with the filesystem.
-			 * Edits inside a file need nothing here — Vite reinvalidates the
-			 * module itself; only appearing and disappearing files change the
-			 * loader table.
+			 * The manifest maps endpoint hashes to export names, so it changes
+			 * when files appear or disappear *and* when a file's `serverFn`
+			 * exports change — every event invalidates it. Vite reinvalidates
+			 * the edited module itself either way.
 			 */
-			const onServerFnFileChange = (file: string) => {
+			const onServerFnFileChange = (file: string, rescanFiles = false) => {
 				if (!isServerFnFile(file)) return;
 				if (!normalizeId(file).startsWith(`${normalizeId(config.root)}/`)) return;
 
-				serverFnFiles = scanServerFnFiles(config.root);
+				if (rescanFiles) serverFnFiles = scanServerFnFiles(config.root);
 
 				for (const environment of Object.values(server.environments)) {
 					const module = environment.moduleGraph.getModuleById(resolvedId(SERVER_FNS_ID));
@@ -406,12 +413,13 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 			server.watcher.on('add', (file) => {
 				onRouteFileChange(file, true);
-				onServerFnFileChange(file);
+				onServerFnFileChange(file, true);
 			});
 			server.watcher.on('unlink', (file) => {
 				onRouteFileChange(file);
-				onServerFnFileChange(file);
+				onServerFnFileChange(file, true);
 			});
+			server.watcher.on('change', (file) => onServerFnFileChange(file));
 
 			if (nitroMode) {
 				// Nitro's dev middleware answers the page requests; riproute's own
@@ -422,6 +430,27 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 				server.middlewares.use(DEV_CSS_IDS_PATH, (_req, res) => {
 					res.setHeader('content-type', 'application/json');
 					res.end(JSON.stringify(collectDevCssIds(server)));
+				});
+
+				// Server-function endpoints live under `/__riproute/`, which
+				// nitro's dev middleware deliberately skips — so riproute routes
+				// them to the handler inside nitro's ssr service itself.
+				server.middlewares.use(async (req, res, next) => {
+					const url = (req.originalUrl ?? req.url ?? '').split('?')[0];
+
+					if (!url.startsWith(SERVER_FN_PREFIX)) return next();
+
+					const ssr = server.environments.ssr as unknown as {
+						dispatchFetch?: (request: Request) => Promise<Response>;
+					};
+
+					if (typeof ssr?.dispatchFetch !== 'function') return next();
+
+					try {
+						await sendResponse(res, await ssr.dispatchFetch(toWebRequest(req)));
+					} catch (error) {
+						next(error);
+					}
 				});
 
 				return;

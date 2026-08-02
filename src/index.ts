@@ -20,7 +20,7 @@ export {
 	useSearchParams,
 } from './hooks/index';
 
-export { LOCATION_PARAM, RPC_PATH, SPLAT_PARAM, SYMBOLS } from './constants';
+export { LOCATION_PARAM, SERVER_FN_PREFIX, SPLAT_PARAM, SYMBOLS } from './constants';
 export { IS_BROWSER } from './env';
 export { createServerFnStub } from './server-fn-client';
 

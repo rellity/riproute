@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -162,9 +163,16 @@ export function scanServerFnFiles(root: string): string[] {
 	return out;
 }
 
-/** The wire id of one function: root-relative posix path + `#` + export name. */
-export function serverFnId(file: string, root: string, name: string): string {
-	return `${normalizeId(path.relative(root, file))}#${name}`;
+/**
+ * The wire id of one function: a hash of its root-relative path and export
+ * name, so the endpoint is stable across builds but the app's file layout
+ * never appears in the client bundle. Client stub and server table both
+ * derive it from the same strings, which is the entire contract.
+ */
+export function serverFnHash(file: string, root: string, name: string): string {
+	const id = `${normalizeId(path.relative(root, file))}#${name}`;
+
+	return crypto.createHash('sha256').update(id).digest('hex').slice(0, 16);
 }
 
 /**
@@ -182,12 +190,12 @@ export function generateServerFnProxyModule(
 	];
 
 	for (const name of names) {
-		const id = JSON.stringify(serverFnId(file, root, name));
+		const stub = `createServerFnStub(${JSON.stringify(
+			serverFnHash(file, root, name)
+		)}, ${JSON.stringify(name)})`;
 
 		lines.push(
-			name === 'default'
-				? `export default createServerFnStub(${id});`
-				: `export const ${name} = createServerFnStub(${id});`
+			name === 'default' ? `export default ${stub};` : `export const ${name} = ${stub};`
 		);
 	}
 

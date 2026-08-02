@@ -86,8 +86,13 @@ export declare function serverFn<T extends (...args: never[]) => unknown>(fn: T)
  */
 export declare function getRequestEvent(): RequestEvent;
 
+export type ServerFnTable = Record<
+	string,
+	{ name: string; load: () => Promise<Record<string, unknown>> }
+>;
+
 /** Builds the RPC endpoint hook the generated handler wires in. */
 export declare function createServerFnDispatch(
-	loaders: Record<string, () => Promise<Record<string, unknown>>>,
-	endpoint?: string
+	functions: ServerFnTable,
+	prefix?: string
 ): (request: Request) => Promise<Response | undefined>;

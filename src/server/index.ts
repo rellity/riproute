@@ -13,7 +13,7 @@ import { withRequestEvent } from './server-fn';
 export { BODY_MARKER, HEAD_MARKER, splitTemplate, fillTemplate };
 export type { PageTemplate };
 export { createServerFnDispatch, getRequestEvent, serverFn } from './server-fn';
-export type { RequestEvent, ServerFnBuilder, ServerFnMiddleware } from './server-fn';
+export type { RequestEvent, ServerFnBuilder, ServerFnMiddleware, ServerFnTable } from './server-fn';
 
 export type TemplateSource = string | ((request: Request) => string | Promise<string>);
 

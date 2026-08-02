@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 
 import type { ViteDevServer } from 'vite';
 
-import { RPC_PATH } from '../constants';
+import { SERVER_FN_PREFIX } from '../constants';
 import type { ResolvedRiprouteOptions } from './options';
 import { HANDLER_ID, devUrl, CLIENT_ID, resolvedId } from './virtual-modules';
 
@@ -26,8 +26,10 @@ export function installDevMiddleware(
 	return () => {
 		server.middlewares.use(async (req, res, next) => {
 			// Server-function calls are POSTs with a JSON accept header — the
-			// one non-page request the handler owns.
-			const isRpc = (req.originalUrl ?? req.url ?? '').split('?')[0] === RPC_PATH;
+			// one non-page URL space the handler owns.
+			const isRpc = (req.originalUrl ?? req.url ?? '')
+				.split('?')[0]
+				.startsWith(SERVER_FN_PREFIX);
 
 			if (!isRpc) {
 				if (req.method !== 'GET' && req.method !== 'HEAD') return next();

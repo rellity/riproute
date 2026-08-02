@@ -12,7 +12,7 @@ import {
 	collectServerFnExports,
 	generateServerFnProxyModule,
 	isServerFnFile,
-	serverFnId,
+	serverFnHash,
 } from '../../src/vite/server-fn';
 
 const FILE = '/app/src/lib/todos.server.ts';
@@ -78,22 +78,26 @@ describe('collectServerFnExports', () => {
 });
 
 describe('generateServerFnProxyModule', () => {
-	it('emits one stub per export against the wire id', () => {
+	it('emits one stub per export against the endpoint hash, path nowhere in sight', () => {
 		const code = generateServerFnProxyModule(FILE, '/app', ['addTodo', 'default']);
+		const addTodoHash = serverFnHash(FILE, '/app', 'addTodo');
+		const defaultHash = serverFnHash(FILE, '/app', 'default');
 
 		expect(code).toContain("import { createServerFnStub } from 'riproute';");
 		expect(code).toContain(
-			'export const addTodo = createServerFnStub("src/lib/todos.server.ts#addTodo");'
+			`export const addTodo = createServerFnStub("${addTodoHash}", "addTodo");`
 		);
-		expect(code).toContain(
-			'export default createServerFnStub("src/lib/todos.server.ts#default");'
-		);
+		expect(code).toContain(`export default createServerFnStub("${defaultHash}", "default");`);
+		// The whole point of hashing: the app's file layout stays server-side.
+		expect(code).not.toContain('todos.server.ts');
 	});
 
-	it('builds posix ids on any OS', () => {
-		expect(serverFnId(path.join('/app', 'src', 'a.server.ts'), '/app', 'x')).toBe(
-			'src/a.server.ts#x'
-		);
+	it('hashes identically from either OS path flavour, distinctly per name', () => {
+		const posix = serverFnHash('/app/src/a.server.ts', '/app', 'x');
+
+		expect(serverFnHash(path.join('/app', 'src', 'a.server.ts'), '/app', 'x')).toBe(posix);
+		expect(posix).toMatch(/^[0-9a-f]{16}$/);
+		expect(serverFnHash('/app/src/a.server.ts', '/app', 'y')).not.toBe(posix);
 	});
 });
 
@@ -117,13 +121,18 @@ describe('createServerFnDispatch', () => {
 	});
 	const unmarked = async () => 'leaked';
 
+	const module = async () => ({ add, boom, whoami, unmarked });
 	const dispatch = createServerFnDispatch({
-		'src/lib/math.server.ts': async () => ({ add, boom, whoami, unmarked }),
+		addhash: { name: 'add', load: module },
+		boomhash: { name: 'boom', load: module },
+		whoamihash: { name: 'whoami', load: module },
+		unmarkedhash: { name: 'unmarked', load: module },
+		gonehash: { name: 'gone', load: module },
 	});
 
-	const call = (body: unknown, init: RequestInit = {}) =>
+	const call = (hash: string, body: unknown, init: RequestInit = {}) =>
 		dispatch(
-			new Request('http://test/_riproute/rpc', {
+			new Request(`http://test/__riproute/serverfn/${hash}`, {
 				method: 'POST',
 				body: JSON.stringify(body),
 				...init,
@@ -132,52 +141,51 @@ describe('createServerFnDispatch', () => {
 
 	it('lets every other path through untouched', async () => {
 		expect(await dispatch(new Request('http://test/about'))).toBeUndefined();
+		expect(await dispatch(new Request('http://test/__riproute/other'))).toBeUndefined();
 	});
 
 	it('runs a marked function and returns its result', async () => {
-		const response = await call({ id: 'src/lib/math.server.ts#add', args: [2, 3] });
+		const response = await call('addhash', { args: [2, 3] });
 
 		expect(response?.status).toBe(200);
 		expect(await response?.json()).toEqual({ ok: true, result: 5 });
 	});
 
 	it('opens the request context around the call', async () => {
-		const response = await call({ id: 'src/lib/math.server.ts#whoami', args: [] });
+		const response = await call('whoamihash', { args: [] });
 
-		expect(await response?.json()).toEqual({ ok: true, result: '/_riproute/rpc' });
+		expect(await response?.json()).toEqual({
+			ok: true,
+			result: '/__riproute/serverfn/whoamihash',
+		});
 	});
 
-	it('refuses unknown ids, unknown exports and unmarked functions alike', async () => {
-		for (const id of [
-			'src/lib/nope.server.ts#add',
-			'src/lib/math.server.ts#nope',
-			'src/lib/math.server.ts#unmarked',
-			'no-separator',
-		]) {
-			const response = await call({ id, args: [] });
+	it('refuses unknown hashes, missing exports and unmarked functions alike', async () => {
+		for (const hash of ['nosuchhash', 'gonehash', 'unmarkedhash', '']) {
+			const response = await call(hash, { args: [] });
 
 			expect(response?.status).toBe(404);
-			expect(((await response?.json()) as { error: string }).error).toContain(
-				'Unknown server function'
+			expect(((await response?.json()) as { error: string }).error).toBe(
+				'Unknown server function.'
 			);
 		}
 	});
 
 	it('turns a thrown error into a 500 envelope', async () => {
-		const response = await call({ id: 'src/lib/math.server.ts#boom', args: [] });
+		const response = await call('boomhash', { args: [] });
 
 		expect(response?.status).toBe(500);
 		expect(await response?.json()).toEqual({ ok: false, error: 'kaput' });
 	});
 
 	it('rejects non-POST and malformed bodies', async () => {
-		const get = await dispatch(new Request('http://test/_riproute/rpc'));
+		const get = await dispatch(new Request('http://test/__riproute/serverfn/addhash'));
 
 		expect(get?.status).toBe(405);
 
-		expect((await call('not json at all'))?.status).toBe(400);
-		expect((await call({ id: 42, args: [] }))?.status).toBe(400);
-		expect((await call({ id: 'x#y', args: 'no' }))?.status).toBe(400);
+		expect((await call('addhash', 'not json at all'))?.status).toBe(400);
+		expect((await call('addhash', { args: 'no' }))?.status).toBe(400);
+		expect((await call('addhash', {}))?.status).toBe(400);
 	});
 });
 
@@ -292,13 +300,13 @@ describe('serverFn builder', () => {
 			.handler(async (name: string) => `hi ${name}${getRequestEvent().locals.suffix}`);
 
 		const dispatch = createServerFnDispatch({
-			'src/a.server.ts': async () => ({ fn }),
+			fnhash: { name: 'fn', load: async () => ({ fn }) },
 		});
 
 		const response = await dispatch(
-			new Request('http://test/_riproute/rpc', {
+			new Request('http://test/__riproute/serverfn/fnhash', {
 				method: 'POST',
-				body: JSON.stringify({ id: 'src/a.server.ts#fn', args: ['ada'] }),
+				body: JSON.stringify({ args: ['ada'] }),
 			})
 		);
 
@@ -309,18 +317,18 @@ describe('serverFn builder', () => {
 describe('createServerFnStub', () => {
 	afterEach(() => vi.unstubAllGlobals());
 
-	it('posts the call and unwraps the result', async () => {
+	it('posts to the function endpoint and unwraps the result', async () => {
 		const fetch = vi.fn(async () => Response.json({ ok: true, result: 5 }));
 
 		vi.stubGlobal('fetch', fetch);
 
-		const stub = createServerFnStub('src/lib/math.server.ts#add');
+		const stub = createServerFnStub('abc123', 'add');
 
 		expect(await stub(2, 3)).toBe(5);
-		expect(fetch).toHaveBeenCalledWith('/_riproute/rpc', {
+		expect(fetch).toHaveBeenCalledWith('/__riproute/serverfn/abc123', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ id: 'src/lib/math.server.ts#add', args: [2, 3] }),
+			body: JSON.stringify({ args: [2, 3] }),
 		});
 	});
 
@@ -330,15 +338,15 @@ describe('createServerFnStub', () => {
 			vi.fn(async () => Response.json({ ok: false, error: 'kaput' }, { status: 500 }))
 		);
 
-		await expect(createServerFnStub('a#b')()).rejects.toThrow('kaput');
+		await expect(createServerFnStub('abc123', 'add')()).rejects.toThrow('kaput');
 	});
 
-	it('survives a non-JSON answer with the status in the message', async () => {
+	it('names the function and status when the answer is not JSON', async () => {
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async () => new Response('<html>bad gateway</html>', { status: 502 }))
 		);
 
-		await expect(createServerFnStub('a#b')()).rejects.toThrow(/502/);
+		await expect(createServerFnStub('abc123', 'add')()).rejects.toThrow(/add\(\).*502/);
 	});
 });
