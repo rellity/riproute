@@ -107,6 +107,27 @@ Files under `src/routes` become routes. The conventions match TanStack Start:
 Every route file default-exports its component. Adding, renaming or deleting one
 regenerates the table and reloads the page.
 
+Dynamic routes get their params typed from the pattern:
+
+```tsrx
+import type { RouteComponentProps } from 'riproute';
+
+export default function Post(props: RouteComponentProps<'/posts/:slug'>) @{
+	// props.params.slug: string — and only slug; a typo is a type error.
+}
+```
+
+Splats work the same way — `RouteComponentProps<'/docs/*splat'>` types
+`params.splat`. Without a pattern argument, `params` falls back to
+`Record<string, string>`.
+
+**Create an empty file and it scaffolds itself.** While the dev server is
+running, a new empty `.tsrx` under `src/routes` gets a working template written
+into it — named for its route, typed for its params, `<title>` claim included —
+the way TanStack Start does it. Only ever an _empty_ file: anything with
+content (a git checkout, a paste) is never touched. Turn it off with
+`riproute({ scaffold: false })`.
+
 ### Code-first
 
 Point the plugin at a module instead:
@@ -254,6 +275,7 @@ a page fails the client build instead of shipping your endpoint code.
 | `routesDir`    | `'src/routes'`          | Scanned for route files. `false` turns file routing off.               |
 | `routes`       | —                       | Module exporting a `routes` array. Takes precedence over `routesDir`.  |
 | `hooks`        | `'src/hooks.server.ts'` | Module exporting `onRequest` / `onError`. `false` disables the lookup. |
+| `scaffold`     | `true`                  | Fill new empty route files with a template in dev.                     |
 | `template`     | `'index.html'`          | The HTML shell.                                                        |
 | `rootId`       | `'root'`                | Element the app renders into.                                          |
 | `base`         | `''`                    | Mount the app under a path prefix.                                     |
