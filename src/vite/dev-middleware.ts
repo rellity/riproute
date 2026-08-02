@@ -5,7 +5,7 @@ import { Readable } from 'node:stream';
 import type { ViteDevServer } from 'vite';
 
 import type { ResolvedRiprouteOptions } from './options';
-import { HANDLER_ID, devUrl, CLIENT_ID } from './virtual-modules';
+import { HANDLER_ID, devUrl, CLIENT_ID, resolvedId } from './virtual-modules';
 
 /**
  * Installs the SSR middleware.
@@ -37,6 +37,11 @@ export function installDevMiddleware(
 			try {
 				const { createRiprouteHandler, shell } = await server.ssrLoadModule(HANDLER_ID);
 
+				// Loading the handler pulled every route module into the SSR
+				// graph — the routes table imports them statically — so the CSS
+				// they use is known before the document is assembled.
+				const css = await collectDevCss(server);
+
 				const handler = createRiprouteHandler({
 					// A root route that renders the document supplies its own
 					// template; otherwise the app has an index.html on disk.
@@ -44,7 +49,7 @@ export function installDevMiddleware(
 					// Either way Vite gets the last word: it injects the HMR
 					// client, and the entry script is a virtual module that never
 					// appears in the app's own markup.
-					transformTemplate: (html) => transform(server, req, html),
+					transformTemplate: (html) => transform(server, req, html, css),
 				});
 
 				await sendResponse(res, await handler(toWebRequest(req)));
@@ -72,12 +77,78 @@ function readTemplate(options: ResolvedRiprouteOptions): Promise<string> {
 async function transform(
 	server: ViteDevServer,
 	req: IncomingMessage,
-	document: string
+	document: string,
+	css: string
 ): Promise<string> {
-	const html = await server.transformIndexHtml(req.originalUrl ?? req.url ?? '/', document);
+	const withCss =
+		css !== '' && document.includes('</head>')
+			? document.replace('</head>', `${css}</head>`)
+			: document + css;
+	const html = await server.transformIndexHtml(req.originalUrl ?? req.url ?? '/', withCss);
 	const script = `<script type="module" src=${JSON.stringify(devUrl(CLIENT_ID))}></script>`;
 
 	return html.includes('</body>') ? html.replace('</body>', `${script}</body>`) : html + script;
+}
+
+const CSS_ID = /\.(css|scss|sass|less|styl|stylus|pcss|postcss)(\?|$)/;
+
+/**
+ * Inlines the CSS of every module the app's SSR graph reaches.
+ *
+ * In dev, stylesheets normally arrive as JS: the client entry loads, each CSS
+ * module injects a <style> tag, and everything before that moment paints
+ * unstyled — the classic dev-only flash on a server-rendered page. Production
+ * has no such gap (the built document carries <link> tags), so dev inlines the
+ * same CSS up front instead.
+ *
+ * The inlined copy is the *initial* paint only. The client's JS-injected
+ * styles land later in the document, so at equal specificity they win, and
+ * HMR keeps updating them — a stale inline copy can never override a fresh
+ * edit.
+ */
+async function collectDevCss(server: ViteDevServer): Promise<string> {
+	const graph = server.environments.ssr.moduleGraph;
+	const entry = graph.getModuleById(resolvedId(HANDLER_ID));
+
+	if (entry === undefined) return '';
+
+	const seen = new Set<unknown>();
+	const ids: string[] = [];
+
+	const walk = (node: { id?: string | null; importedModules: Set<unknown> }): void => {
+		if (seen.has(node)) return;
+
+		seen.add(node);
+
+		if (node.id != null && CSS_ID.test(node.id)) ids.push(node.id);
+
+		for (const dep of node.importedModules) {
+			walk(dep as never);
+		}
+	};
+
+	walk(entry as never);
+
+	let out = '';
+
+	for (const id of ids) {
+		try {
+			// `?inline` asks Vite for the transformed stylesheet as a string —
+			// Tailwind, PostCSS and preprocessors all included.
+			const mod = (await server.ssrLoadModule(
+				id.includes('?') ? `${id.replace('?', '?inline&')}` : `${id}?inline`
+			)) as { default?: unknown };
+
+			if (typeof mod.default === 'string' && mod.default !== '') {
+				out += `<style data-riproute-dev-css=${JSON.stringify(id)}>${mod.default}</style>`;
+			}
+		} catch {
+			// A virtual CSS id that cannot be inlined; the JS-injected copy
+			// still applies, it just cannot beat first paint.
+		}
+	}
+
+	return out;
 }
 
 export function toWebRequest(req: IncomingMessage): Request {

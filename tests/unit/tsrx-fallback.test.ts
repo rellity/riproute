@@ -21,11 +21,9 @@ async function run(id: string, code: string, consumer: 'client' | 'server' = 'cl
 
 	plugin.configResolved({ command: 'serve', root: '/app' });
 
-	return plugin.transform.call(
-		{ environment: { config: { consumer } } },
-		code,
-		id
-	) as Promise<{ code: string } | null>;
+	return plugin.transform.call({ environment: { config: { consumer } } }, code, id) as Promise<{
+		code: string;
+	} | null>;
 }
 
 describe('tsrxFallbackPlugin', () => {

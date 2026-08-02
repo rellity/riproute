@@ -30,7 +30,10 @@ import {
 export type { RiprouteOptions, ServerOnlyOptions } from './options';
 export { ROUTES_ID, CLIENT_ID, HANDLER_ID, SERVER_ID } from './virtual-modules';
 
-const CLIENT_ENTRY_NAME = 'riproute-client';
+// Named `index`, so Vite names the built assets exactly as it would for a
+// plain index.html app: `assets/index-<hash>.js`. The prefix carried no
+// information a consumer wanted in their asset URLs.
+const CLIENT_ENTRY_NAME = 'index';
 // `dist/server/index.js` — the conventional entry name, so `node dist/server`
 // and a bare `import('./dist/server')` both work.
 const SERVER_ENTRY_NAME = 'index';
