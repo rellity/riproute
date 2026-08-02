@@ -135,3 +135,42 @@ describe('rewriteTitles', () => {
 		expect(rewritten).toContain("<RiprouteTitle1 text={'x'} />");
 	});
 });
+
+describe('titleRewritePlugin load hook', () => {
+	it('rewrites at load time, so plugin order cannot matter', async () => {
+		const { titleRewritePlugin } = await import('../../src/vite/title-rewrite');
+		const fs = await import('node:fs');
+		const os = await import('node:os');
+		const path = await import('node:path');
+
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'riproute-title-'));
+		const file = path.join(dir, 'page.tsrx');
+
+		fs.writeFileSync(file, component("<title append>{'home'}</title>"));
+
+		try {
+			const plugin = titleRewritePlugin() as never as {
+				load: (id: string) => Promise<{ code: string } | null>;
+			};
+
+			// `@ripple-ts/vite-plugin`'s compile transform is also enforce:'pre',
+			// so with `[ripple(), riproute()]` a transform-based rewrite would run
+			// after the compiler. `load` runs before every transform — this is the
+			// hook that makes `<title>` work under either plugin order.
+			const result = await plugin.load(file);
+
+			expect(result).not.toBeNull();
+			expect(result?.code).toContain("<RiprouteTitle text={'home'} append />");
+
+			// Files with nothing to rewrite fall through to Vite's default loader.
+			fs.writeFileSync(file, component("<h1>{'hi'}</h1>"));
+			expect(await plugin.load(file)).toBeNull();
+
+			// Virtual ids and missing files are not this plugin's business.
+			expect(await plugin.load('\0virtual:riproute/routes')).toBeNull();
+			expect(await plugin.load(path.join(dir, 'gone.tsrx'))).toBeNull();
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});

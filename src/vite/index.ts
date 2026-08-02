@@ -51,8 +51,12 @@ const SERVER_ENTRY_NAME = 'index';
  * riproute does not wrap or vendor `ripple()` — that plugin owns `.tsrx`
  * compilation, scoped CSS, HMR and the dependency scanner, and it stays the
  * consumer's to configure. riproute contributes routing, SSR and the build.
- * Ordering does not matter: everything here is `enforce: 'pre'`, and Ripple's
- * compile step is not.
+ *
+ * Ordering does not matter, but not for free: `ripple()`'s compile transform is
+ * *also* `enforce: 'pre'`, so with `[ripple(), riproute()]` it would compile
+ * `.tsrx` before any riproute transform. The title rewrite therefore happens in
+ * a `load` hook, which every plugin's transform runs after regardless of array
+ * order.
  */
 export function riproute(userOptions: RiprouteOptions = {}): Plugin[] {
 	return [

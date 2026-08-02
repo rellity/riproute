@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+
 import { parse } from 'ripple/compiler';
 import type { Plugin } from 'vite';
 
@@ -45,14 +47,45 @@ const TSRX = /\.tsrx(\?|$)/;
 /**
  * Runs the rewrite ahead of the Ripple compiler.
  *
- * `enforce: 'pre'` is what guarantees the ordering: `@ripple-ts/vite-plugin`
- * compiles `.tsrx` from a plugin with no `enforce`, so every `pre` plugin —
- * including this one — has already had its turn on the source.
+ * The rewrite happens in `load`, not only `transform`, and that is what makes
+ * plugin order irrelevant. `@ripple-ts/vite-plugin`'s compile transform lives
+ * on a plugin that is *also* `enforce: 'pre'`, so within the pre phase the
+ * `plugins` array order decides — write `[ripple(), riproute()]` and a
+ * transform-based rewrite would run *after* the compiler, leaving raw
+ * `<title append>` elements in the document. Every `load` hook runs before any
+ * plugin's transform, so loading the rewritten source wins under either order.
+ *
+ * The transform stays as well: pipelines that feed source straight through
+ * transforms (the vitest harness, other dev tools) never call `load`, and the
+ * rewrite is idempotent — a second pass finds no bare `<title>` left to touch.
  */
 export function titleRewritePlugin(): Plugin {
 	return {
 		name: 'riproute:title',
 		enforce: 'pre',
+
+		async load(id) {
+			const file = id.split('?')[0];
+
+			if (!file.endsWith('.tsrx') || isRiprouteSource(file)) return null;
+
+			let source: string;
+
+			try {
+				source = await fs.readFile(file, 'utf-8');
+			} catch {
+				// Not a real file (a virtual id, or picked up mid-delete):
+				// somebody else's load, or Vite's default.
+				return null;
+			}
+
+			const rewritten = await rewriteTitles(source, file);
+
+			// Untouched files fall through to Vite's default loader, so this
+			// plugin leaves no fingerprint on modules it has nothing to say
+			// about.
+			return rewritten === source ? null : { code: rewritten };
+		},
 
 		async transform(code, id) {
 			const file = id.split('?')[0];
