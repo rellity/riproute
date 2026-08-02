@@ -9,7 +9,9 @@ import { resolveOptions } from './options';
 import type { ResolvedRiprouteOptions, RiprouteOptions } from './options';
 import { ROUTE_EXTENSIONS, scanRoutes } from './route-scan';
 import type { DiscoveredRoutes } from './route-scan';
+import { normalizeId } from './package-root';
 import { serverGuardPlugin } from './server-guard';
+import { tsrxFallbackPlugin } from './tsrx-fallback';
 import { extractBaseTitle, titleRewritePlugin } from './title-rewrite';
 import {
 	CLIENT_ID,
@@ -54,6 +56,10 @@ export function riproute(userOptions: RiprouteOptions = {}): Plugin[] {
 		titleRewritePlugin(),
 		serverGuardPlugin(userOptions.serverOnly),
 		corePlugin(userOptions),
+		// Post-enforce: compiles only the query-carrying `.tsrx` ids that
+		// `@ripple-ts/vite-plugin`'s end-anchored filter misses when riproute is
+		// a real dependency inside node_modules.
+		tsrxFallbackPlugin(),
 	];
 }
 
@@ -218,7 +224,8 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 			const onRouteFileChange = (file: string) => {
 				if (options.routesDir === null) return;
-				if (!file.startsWith(options.routesDir + path.sep)) return;
+				// Chokidar emits native separators; compare in posix on both sides.
+				if (!normalizeId(file).startsWith(`${normalizeId(options.routesDir)}/`)) return;
 				if (!ROUTE_EXTENSIONS.includes(path.extname(file))) return;
 				if (!rescan()) return;
 

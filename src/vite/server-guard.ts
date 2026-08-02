@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import type { Plugin, ViteDevServer } from 'vite';
 
-import { isRiprouteSource } from './package-root';
+import { isRiprouteSource, normalizeId } from './package-root';
 
 /**
  * Keeps server-only code out of the browser bundle.
@@ -454,13 +454,14 @@ function importersOf(
 function isProjectSource(id: string, root: string): boolean {
 	if (id.startsWith('\0') || id.includes('\0')) return false;
 
-	const file = cleanUrl(id);
+	// Posix on both sides: Vite ids use `/` on every OS, `root` may not.
+	const file = normalizeId(cleanUrl(id));
 
 	if (!path.isAbsolute(file)) return false;
-	if (file.includes(`${path.sep}node_modules${path.sep}`)) return false;
+	if (file.includes('/node_modules/')) return false;
 	if (isRiprouteSource(file)) return false;
 
-	return file.startsWith(root + path.sep);
+	return file.startsWith(`${normalizeId(root)}/`);
 }
 
 /** Root-relative where possible — an absolute path in an error is mostly noise. */
@@ -475,7 +476,7 @@ function cleanUrl(id: string): string {
 }
 
 function toPosix(value: string): string {
-	return value.split(path.sep).join('/');
+	return normalizeId(value);
 }
 
 /**

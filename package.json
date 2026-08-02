@@ -70,6 +70,6 @@
 	"peerDependencies": {
 		"@ripple-ts/vite-plugin": "^0.3.118",
 		"ripple": "^0.3.118",
-		"vite": "^6 || ^7"
+		"vite": "^6 || ^7 || ^8"
 	}
 }

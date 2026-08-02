@@ -2,15 +2,28 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Absolute path of the riproute package.
+ * Rewrites a path to posix separators.
+ *
+ * Vite module ids use `/` on every OS while Node's `path` module answers in
+ * the platform's separator, so on Windows an id-vs-path `startsWith` silently
+ * never matches. Every comparison in the plugin goes through this first.
+ */
+export function normalizeId(value: string): string {
+	return value.replace(/\\/g, '/');
+}
+
+/**
+ * Absolute path of the riproute package, posix-normalized.
  *
  * Resolved from this module's own location — `dist/vite/index.js` once built,
  * `src/vite/package-root.ts` under vitest — so both work.
  */
-export const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+export const PACKAGE_ROOT = normalizeId(
+	path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+);
 
 /** riproute's shipped runtime source, and only that. */
-const SOURCE_ROOT = path.join(PACKAGE_ROOT, 'src') + path.sep;
+const SOURCE_ROOT = `${PACKAGE_ROOT}/src/`;
 
 /**
  * Whether `file` is part of riproute's own runtime.
@@ -24,5 +37,5 @@ const SOURCE_ROOT = path.join(PACKAGE_ROOT, 'src') + path.sep;
  * every rule off for the app we test them with.
  */
 export function isRiprouteSource(file: string): boolean {
-	return path.resolve(file).startsWith(SOURCE_ROOT);
+	return normalizeId(path.resolve(file)).startsWith(SOURCE_ROOT);
 }
