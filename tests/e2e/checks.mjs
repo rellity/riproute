@@ -133,15 +133,27 @@ export async function runChecks(baseUrl, label) {
 		rpcReply
 	);
 
-	// The load-on-mount pattern from the docs: an effect calling a server
-	// function once hydrated. Also proves an effect in a route body does not
+	// The load-on-mount pattern from the docs: useFn() calling a server
+	// function once hydrated. Also proves the reactive writes it makes do not
 	// desync hydration.
 	await page.waitForFunction(
 		() => document.getElementById('rpc-auto')?.textContent === 'Hello, effect!',
 		undefined,
 		{ timeout: 5000 }
 	);
-	check('server function loads on mount via effect', true);
+	check('server function loads on mount via useFn', true);
+
+	// useFn's iterable form: @for over the hook itself, filled in when the
+	// array lands.
+	await page.waitForFunction(
+		() => document.querySelectorAll('#rpc-todos li').length === 3,
+		undefined,
+		{ timeout: 5000 }
+	);
+	check(
+		'useFn iterates the loaded array in @for',
+		(await page.textContent('#rpc-todos li:first-child')) === 'write a route'
+	);
 	check(
 		'rpc page hydrates clean',
 		!messages

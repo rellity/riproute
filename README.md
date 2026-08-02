@@ -287,29 +287,42 @@ export const addTodo = serverFn()
 export const listTodos = serverFn(async () => db.todos.all());
 ```
 
-Calling one from a route is just an import — there is no client API. In the
-browser bundle the import is a stub; during SSR it is the real function:
+Calling one from a route is just an import — in the browser bundle it is a
+stub, during SSR the real function. For loading data on mount, `useFn()` wraps
+the call in reactive state; when the result is an array the hook is itself
+iterable, typed to the element:
 
 ```tsrx
-import { track, effect } from 'ripple';
+import { useFn } from 'riproute';
 import { addTodo, listTodos } from '../lib/todos.server';
 
 export default function Todos() @{
-	let todos = track([]);
-
-	// Effects never run during SSR, so this fetches once, in the browser.
-	effect(() => {
-		void listTodos().then((loaded) => (todos.value = loaded));
-	});
+	const todos = useFn(listTodos); // runs once hydrated, never during SSR
 
 	<div>
+		@if (todos.loading) {
+			<p>{'Loading…'}</p>
+		}
+
+		<ul>
+			@for (const todo of todos; key todo.id) {
+				<li>{todo.name}</li>
+			}
+		</ul>
+
 		<button onClick={async () => {
-			await addTodo('hello');
-			todos.value = await listTodos();
+			await addTodo('hello'); // event handlers call the function directly
+			await todos.refresh();
 		}}>{'Add'}</button>
 	</div>
 }
 ```
+
+`useFn(fn, ...args)` calls `fn(...args)` once the component reaches the
+browser and exposes `value` (the awaited result, `undefined` until it lands),
+`loading`, `error`, and `refresh(...args?)` — re-run with the original
+arguments or new ones; a superseded call can never overwrite a newer result.
+The page server-renders in its loading state and fills in after hydration.
 
 Types flow through untouched: TypeScript checks the call against the source
 module, so `addTodo` keeps its signature and a wrong argument is a type error

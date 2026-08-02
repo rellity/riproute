@@ -1,23 +1,20 @@
-import { effect, track } from 'ripple';
-import { greet } from '../lib/greeting.server';
+import { track } from 'ripple';
+import { useFn } from 'riproute';
+import { greet, listTodos } from '../lib/greeting.server';
 
 /**
- * A server function called from the browser. The import above is the real
- * module during SSR and a typed fetch stub in the client bundle.
+ * Server functions called from the browser. The imports above are the real
+ * module during SSR and typed fetch stubs in the client bundle.
  */
 export default function Rpc() @{
 	let reply = track('');
-	let auto = track('');
 
-	// Effects never run during SSR, so this is the load-on-mount pattern:
-	// the page server-renders empty and fills in once hydrated.
-	effect(() => {
-		if (auto.value !== '') return;
+	// The load-on-mount pattern: runs once hydrated (never during SSR), lands
+	// in reactive state. `auto.value` is typed from greet's return.
+	const auto = useFn(greet, 'effect');
 
-		void greet('effect').then((result) => {
-			auto.value = result.message;
-		});
-	});
+	// An array result makes the hook iterable — `todo` is a `Todo`.
+	const todos = useFn(listTodos);
 
 	<div>
 		<title append>{'server functions'}</title>
@@ -30,6 +27,11 @@ export default function Rpc() @{
 			}}
 		>{'Call greet()'}</button>
 		<p id="rpc-reply">{reply.value}</p>
-		<p id="rpc-auto">{auto.value}</p>
+		<p id="rpc-auto">{auto.value === undefined ? '' : auto.value.message}</p>
+		<ul id="rpc-todos">
+			@for (const todo of todos; key todo.id) {
+				<li>{todo.name}</li>
+			}
+		</ul>
 	</div>
 }

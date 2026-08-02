@@ -19,6 +19,8 @@ export {
 	useRouter,
 	useSearchParams,
 } from './hooks/index';
+export { useFn } from './hooks/use-fn';
+export type { UseFnResult } from './hooks/use-fn';
 
 export { LOCATION_PARAM, SERVER_FN_PREFIX, SPLAT_PARAM, SYMBOLS } from './constants';
 export { IS_BROWSER } from './env';

@@ -28,5 +28,14 @@ export const greet = serverFn()
 		};
 	});
 
+export type Todo = { id: number; name: string };
+
+/** Typed end to end: `useFn(listTodos)` iterates as `Todo` in the browser. */
+export const listTodos = serverFn(async (): Promise<Todo[]> => [
+	{ id: 1, name: 'write a route' },
+	{ id: 2, name: 'call a server function' },
+	{ id: 3, name: 'ship it' },
+]);
+
 /** Not wrapped, so not callable — and not importable from the browser. */
 export const secret = 'server-only';
