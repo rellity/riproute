@@ -64,8 +64,9 @@ export {
 	useSearchParams,
 } from '../src/hooks/index';
 
-export { LOCATION_PARAM, SPLAT_PARAM, SYMBOLS } from '../src/constants';
+export { LOCATION_PARAM, RPC_PATH, SPLAT_PARAM, SYMBOLS } from '../src/constants';
 export { IS_BROWSER } from '../src/env';
+export { createServerFnStub } from '../src/server-fn-client';
 
 export {
 	compileRoutePath,

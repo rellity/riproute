@@ -15,3 +15,11 @@ export const LOCATION_PARAM = '__ripple_router_location';
  * `createRouterRoutes()`.
  */
 export const SPLAT_PARAM = '__ripple_router_rest';
+
+/**
+ * The endpoint server-function calls go through.
+ *
+ * One fixed POST path for every function: the body says which function to
+ * run, so riproute never has to negotiate URL space with the app's routes.
+ */
+export const RPC_PATH = '/_riproute/rpc';

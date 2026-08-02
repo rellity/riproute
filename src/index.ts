@@ -20,8 +20,9 @@ export {
 	useSearchParams,
 } from './hooks/index';
 
-export { LOCATION_PARAM, SPLAT_PARAM, SYMBOLS } from './constants';
+export { LOCATION_PARAM, RPC_PATH, SPLAT_PARAM, SYMBOLS } from './constants';
 export { IS_BROWSER } from './env';
+export { createServerFnStub } from './server-fn-client';
 
 // Routing primitives — pure, and safe to import on the server.
 export {

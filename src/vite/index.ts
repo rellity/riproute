@@ -12,6 +12,7 @@ import { ROUTE_EXTENSIONS, scanRoutes } from './route-scan';
 import type { DiscoveredRoutes } from './route-scan';
 import { isScaffoldable, scaffoldRoute } from './scaffold';
 import { normalizeId } from './package-root';
+import { isServerFnFile, scanServerFnFiles, serverFnClientPlugin } from './server-fn';
 import { serverGuardPlugin } from './server-guard';
 import { tsrxFallbackPlugin } from './tsrx-fallback';
 import { extractBaseTitle, titleRewritePlugin } from './title-rewrite';
@@ -21,6 +22,7 @@ import {
 	HANDLER_ID,
 	NITRO_ID,
 	ROUTES_ID,
+	SERVER_FNS_ID,
 	SERVER_ID,
 	VIRTUAL_IDS,
 	generateClientModule,
@@ -28,12 +30,20 @@ import {
 	generateNitroModule,
 	generateRoutesModule,
 	generateRoutesProxyModule,
+	generateServerFnManifestModule,
 	generateServerModule,
 	resolvedId,
 } from './virtual-modules';
 
 export type { RiprouteOptions, ServerOnlyOptions } from './options';
-export { ROUTES_ID, CLIENT_ID, HANDLER_ID, SERVER_ID, NITRO_ID } from './virtual-modules';
+export {
+	ROUTES_ID,
+	CLIENT_ID,
+	HANDLER_ID,
+	SERVER_ID,
+	NITRO_ID,
+	SERVER_FNS_ID,
+} from './virtual-modules';
 
 // Named `index`, so Vite names the built assets exactly as it would for a
 // plain index.html app: `assets/index-<hash>.js`. The prefix carried no
@@ -70,6 +80,9 @@ const SERVER_ENTRY_NAME = 'index';
 export function riproute(userOptions: RiprouteOptions = {}): Plugin[] {
 	return [
 		titleRewritePlugin(),
+		// Before the guard: the swap happens in `load`, but the guard's
+		// `resolveId` is what lets a serverFn-carrying import through to it.
+		serverFnClientPlugin(),
 		serverGuardPlugin(userOptions.serverOnly),
 		corePlugin(userOptions),
 		// Post-enforce: compiles only the query-carrying `.tsrx` ids that
@@ -91,6 +104,8 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 	let clientTags = '';
 	/** Whether nitro owns the server. See `nitro.ts` for how the wiring works. */
 	let nitroMode = false;
+	/** `*.server.*` files under src/, for the server-function manifest. */
+	let serverFnFiles: string[] = [];
 
 	/**
 	 * Re-reads the base title from the root route.
@@ -247,6 +262,7 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 			warnAboutRippleConfig(resolved.root);
 			rescan();
+			serverFnFiles = scanServerFnFiles(resolved.root);
 			await refreshBaseTitle();
 		},
 
@@ -274,6 +290,9 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 				case resolvedId(SERVER_ID):
 					return generateServerModule(options, clientTags);
+
+				case resolvedId(SERVER_FNS_ID):
+					return generateServerFnManifestModule(serverFnFiles, config.root);
 
 				case resolvedId(NITRO_ID): {
 					const dev = config.command === 'serve';
@@ -364,8 +383,35 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 				server.hot.send({ type: 'full-reload' });
 			};
 
-			server.watcher.on('add', (file) => onRouteFileChange(file, true));
-			server.watcher.on('unlink', (file) => onRouteFileChange(file));
+			/**
+			 * Keeps the server-function manifest in step with the filesystem.
+			 * Edits inside a file need nothing here — Vite reinvalidates the
+			 * module itself; only appearing and disappearing files change the
+			 * loader table.
+			 */
+			const onServerFnFileChange = (file: string) => {
+				if (!isServerFnFile(file)) return;
+				if (!normalizeId(file).startsWith(`${normalizeId(config.root)}/`)) return;
+
+				serverFnFiles = scanServerFnFiles(config.root);
+
+				for (const environment of Object.values(server.environments)) {
+					const module = environment.moduleGraph.getModuleById(resolvedId(SERVER_FNS_ID));
+
+					if (module != null) environment.moduleGraph.invalidateModule(module);
+				}
+
+				server.hot.send({ type: 'full-reload' });
+			};
+
+			server.watcher.on('add', (file) => {
+				onRouteFileChange(file, true);
+				onServerFnFileChange(file);
+			});
+			server.watcher.on('unlink', (file) => {
+				onRouteFileChange(file);
+				onServerFnFileChange(file);
+			});
 
 			if (nitroMode) {
 				// Nitro's dev middleware answers the page requests; riproute's own

@@ -115,6 +115,19 @@ export async function runChecks(baseUrl, label) {
 		(await page.getAttribute('a[href="/about"]', 'class')) === 'active'
 	);
 
+	await page.goto(`${baseUrl}/rpc`, { waitUntil: 'networkidle' });
+	await page.click('button:has-text("Call greet()")');
+	await page.waitForFunction(
+		() => (document.getElementById('rpc-reply')?.textContent ?? '') !== '',
+		undefined,
+		{ timeout: 5000 }
+	);
+	check(
+		'server function round-trips',
+		(await page.textContent('#rpc-reply')) === 'Hello, riproute! via /_riproute/rpc',
+		await page.textContent('#rpc-reply')
+	);
+
 	await browser.close();
 
 	return failures;

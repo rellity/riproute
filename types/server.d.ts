@@ -46,3 +46,31 @@ export type RiprouteHandler = (request: Request) => Promise<Response>;
 
 /** Builds a framework-agnostic `Request` → `Response` handler. */
 export declare function createHandler(options: HandlerOptions): RiprouteHandler;
+
+// ---------------------------------------------------------------------------
+// Server functions
+// ---------------------------------------------------------------------------
+
+export type RequestEvent = {
+	/** The request being served — the RPC call, or the page being rendered. */
+	request: Request;
+};
+
+/**
+ * Marks a function exported from a `*.server.ts` file as callable from the
+ * browser. Returns the function unchanged; arguments and result cross the
+ * wire as JSON.
+ */
+export declare function serverFn<T extends (...args: never[]) => unknown>(fn: T): T;
+
+/**
+ * The request behind the current call — inside a server function, or anywhere
+ * in a server render. Throws outside a request.
+ */
+export declare function getRequestEvent(): RequestEvent;
+
+/** Builds the RPC endpoint hook the generated handler wires in. */
+export declare function createServerFnDispatch(
+	loaders: Record<string, () => Promise<Record<string, unknown>>>,
+	endpoint?: string
+): (request: Request) => Promise<Response | undefined>;

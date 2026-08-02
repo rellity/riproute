@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { Plugin, ViteDevServer } from 'vite';
 
 import { isRiprouteSource, normalizeId } from './package-root';
+import { collectServerFnExportsFromFile, isServerFnFile } from './server-fn';
 
 /**
  * Keeps server-only code out of the browser bundle.
@@ -273,7 +274,9 @@ export function formatServerOnlyError(
 	const hint =
 		reason === 'convention'
 			? 'Server-only modules match *.server.*, src/lib/server/** and src/server/**,\n' +
-				'and anything importing "riproute/server-only".'
+				'and anything importing "riproute/server-only".\n' +
+				'To call a function in a *.server.* file from the browser, export it\n' +
+				'wrapped in serverFn() from "riproute/server".'
 			: '';
 
 	return [
@@ -361,6 +364,19 @@ export function serverGuardPlugin(options: ServerOnlyOptions = {}): Plugin {
 				const file = cleanUrl(resolved.id);
 
 				if (!isServerOnlyPath(file, { ...options, root })) return null;
+
+				// A `*.server.*` file with `serverFn()` exports is the one sanctioned
+				// crossing: the import is allowed through, and the server-fn plugin's
+				// `load` hook swaps the module for RPC stubs before any client
+				// transform can see the real code. Everything else stays refused —
+				// including suffix files with nothing marked, whose error below now
+				// says how to mark them.
+				if (
+					isServerFnFile(file) &&
+					(await collectServerFnExportsFromFile(file)).length > 0
+				) {
+					return null;
+				}
 
 				reason = 'convention';
 				target = display(file, root);

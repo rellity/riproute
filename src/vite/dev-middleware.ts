@@ -4,6 +4,7 @@ import { Readable } from 'node:stream';
 
 import type { ViteDevServer } from 'vite';
 
+import { RPC_PATH } from '../constants';
 import type { ResolvedRiprouteOptions } from './options';
 import { HANDLER_ID, devUrl, CLIENT_ID, resolvedId } from './virtual-modules';
 
@@ -24,14 +25,21 @@ export function installDevMiddleware(
 ): () => void {
 	return () => {
 		server.middlewares.use(async (req, res, next) => {
-			if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+			// Server-function calls are POSTs with a JSON accept header — the
+			// one non-page request the handler owns.
+			const isRpc = (req.originalUrl ?? req.url ?? '').split('?')[0] === RPC_PATH;
 
-			const accept = req.headers.accept ?? '';
+			if (!isRpc) {
+				if (req.method !== 'GET' && req.method !== 'HEAD') return next();
 
-			// Vite has already had its turn, so anything left is either a page
-			// or a missing asset. Only claim things a browser would render.
-			if (accept !== '' && !accept.includes('text/html') && !accept.includes('*/*')) {
-				return next();
+				const accept = req.headers.accept ?? '';
+
+				// Vite has already had its turn, so anything left is either a
+				// page or a missing asset. Only claim things a browser would
+				// render.
+				if (accept !== '' && !accept.includes('text/html') && !accept.includes('*/*')) {
+					return next();
+				}
 			}
 
 			try {

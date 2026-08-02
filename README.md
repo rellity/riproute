@@ -227,6 +227,8 @@ browser graph pulls the marker in too, and fails there.
 Three things are caught without any marker at all:
 
 - **Naming conventions** — `*.server.ts`, `src/lib/server/**`, `src/server/**`.
+  The one sanctioned crossing is a `serverFn()` export — see
+  [Server functions](#server-functions).
 - **Node built-ins** — importing `node:fs` from app code. Vite would otherwise
   externalise it with a runtime warning, so the first symptom is a broken
   production page.
@@ -247,26 +249,66 @@ riproute({
 });
 ```
 
+## Server functions
+
+The sanctioned way across the server boundary. Wrap a function in `serverFn()`
+inside any `*.server.ts` file and it becomes callable from everywhere — on the
+server the call is direct, and in the browser the import turns into a typed
+stub that POSTs to `/_riproute/rpc`, where riproute runs the real thing:
+
+```ts
+// src/lib/todos.server.ts
+import { serverFn, getRequestEvent } from 'riproute/server';
+
+export const addTodo = serverFn(async (text: string) => {
+	const { request } = getRequestEvent(); // cookies, headers
+
+	return db.todos.insert(text);
+});
+```
+
+```tsrx
+// any route — same import on both sides
+import { addTodo } from '../lib/todos.server';
+
+const todo = await addTodo('hello');
+```
+
+Types flow through untouched: TypeScript checks the call against the source
+module, so `addTodo` keeps its signature and a wrong argument is a type error
+in the editor, not a runtime surprise. Arguments and results cross the wire as
+JSON — keep them plain data.
+
+The wrapper is the security boundary, not ceremony. Only `serverFn()` exports
+exist in the browser's view of the module: importing anything else from a
+`.server.ts` file fails the client build with a missing-export error, and the
+endpoint refuses to run anything unmarked — so the `db` sitting next to
+`addTodo` stays exactly as server-only as it was. A `.server.ts` file with no
+`serverFn` exports at all cannot be imported from client code, same as always.
+
+`getRequestEvent()` returns the request behind the current call — inside a
+server function, and anywhere in a server render. Server functions run _after_
+`onRequest` hooks, so an auth gate in `hooks.server.ts` covers them too.
+
 ## Endpoints and hooks
 
-Anything that is not a page lives in `src/hooks.server.ts`, picked up by name:
+Server functions replace most hand-written JSON endpoints; what stays in
+`src/hooks.server.ts` (picked up by name) is the cross-cutting kind — auth
+gates, redirects, error reporting, and endpoints that are not function calls:
 
 ```ts
 // src/hooks.server.ts
 export function onRequest(request: Request): Response | undefined {
-	const { pathname } = new URL(request.url);
+	if (!authorized(request)) return new Response(null, { status: 401 });
 
-	if (pathname === '/api/posts') return Response.json(posts);
-
-	return undefined; // fall through to routing
+	return undefined; // fall through to server functions and routing
 }
 ```
 
-`onRequest` runs before route matching — return a `Response` to answer the
-request, return nothing to let the router carry on. An `onError` export
-overrides the 500 page the same way. The module runs identically under `vite`
-and in the built server, and the `.server.` in its name means importing it from
-a page fails the client build instead of shipping your endpoint code.
+`onRequest` runs before route matching _and_ before server-function dispatch —
+return a `Response` to answer the request, return nothing to let riproute
+carry on. An `onError` export overrides the 500 page the same way. The module
+runs identically under `vite` and in the built server.
 
 ## Plugin options
 

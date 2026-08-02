@@ -8,9 +8,12 @@ import { normalizeBase, stripBase } from '../utils/location';
 import { matchRoutes, normalizeRoutePath } from '../utils/match-routes';
 import { BODY_MARKER, HEAD_MARKER, escapeHtml, fillTemplate, splitTemplate } from './html';
 import type { PageTemplate } from './html';
+import { withRequestEvent } from './server-fn';
 
 export { BODY_MARKER, HEAD_MARKER, splitTemplate, fillTemplate };
 export type { PageTemplate };
+export { createServerFnDispatch, getRequestEvent, serverFn } from './server-fn';
+export type { RequestEvent } from './server-fn';
 
 export type TemplateSource = string | ((request: Request) => string | Promise<string>);
 
@@ -117,7 +120,7 @@ export function createHandler(options: HandlerOptions): RiprouteHandler {
 		return splitTemplate(transformed, rootId);
 	}
 
-	return async function handle(request) {
+	async function handle(request: Request): Promise<Response> {
 		if (options.onRequest !== undefined) {
 			const early = await options.onRequest(request);
 
@@ -169,7 +172,11 @@ export function createHandler(options: HandlerOptions): RiprouteHandler {
 
 			throw error;
 		}
-	};
+	}
+
+	// The whole request — hooks, dispatch and render alike — runs inside the
+	// request context, so `getRequestEvent()` works during SSR too.
+	return (request) => withRequestEvent(request, () => handle(request));
 }
 
 /**
