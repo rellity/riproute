@@ -1,7 +1,7 @@
 import { flushSync } from 'ripple';
 import { describe, expect, it, vi } from 'vitest';
 
-import { useFn } from '../../src/index';
+import { useMutateFn, useQueryFn } from '../../src/index';
 
 type Todo = { id: number; name: string };
 
@@ -18,18 +18,18 @@ function deferred<T>() {
 	return { promise, resolve, reject };
 }
 
-describe('useFn', () => {
-	it('loads on mount, exposes value and loading, iterates in @for', async () => {
+describe('useQueryFn', () => {
+	it('loads on mount, destructures reactively, iterates data in @for', async () => {
 		const first = deferred<Todo[]>();
 		const listTodos = vi.fn((): Promise<Todo[]> => first.promise);
 
 		function Todos() @{
-			const todos = useFn(listTodos);
+			const { data, loading } = useQueryFn(listTodos);
 
 			<div>
-				<p id="state">{todos.loading ? 'loading' : 'done'}</p>
+				<p id="state">{loading.value ? 'loading' : 'done'}</p>
 				<ul>
-					@for (const todo of todos; key todo.id) {
+					@for (const todo of data; key todo.id) {
 						<li>{todo.name}</li>
 					}
 				</ul>
@@ -57,7 +57,7 @@ describe('useFn', () => {
 		expect(items).toEqual(['one', 'two']);
 	});
 
-	it('passes arguments through, typed, and refresh() re-runs', async () => {
+	it('passes arguments through, typed, and refetch() re-runs', async () => {
 		const calls: string[] = [];
 		const greet = vi.fn(async (name: string) => {
 			calls.push(name);
@@ -65,14 +65,14 @@ describe('useFn', () => {
 			return `hi ${name}`;
 		});
 
-		let refresh!: (...args: [string]) => Promise<void>;
+		let refetch!: (...args: [string] | []) => Promise<string | undefined>;
 
 		function Greeting() @{
-			const greeting = useFn(greet, 'ada');
+			const greeting = useQueryFn(greet, 'ada');
 
-			refresh = greeting.refresh;
+			refetch = greeting.refetch as never;
 
-			<p>{greeting.value ?? ''}</p>
+			<p>{greeting.data.value ?? ''}</p>
 		}
 
 		render_into_dom(Greeting);
@@ -84,19 +84,19 @@ describe('useFn', () => {
 		});
 
 		// No arguments — the original ones are reused.
-		await refresh();
+		await refetch();
 		flushSync();
 		expect(calls).toEqual(['ada', 'ada']);
 
-		// New arguments override.
-		await refresh('grace');
+		// New arguments override, and the value comes back too.
+		expect(await refetch('grace')).toBe('hi grace');
 		await vi.waitFor(() => {
 			flushSync();
 			expect(container.querySelector('p')?.textContent).toBe('hi grace');
 		});
 	});
 
-	it('captures a rejection in error and clears it on refresh', async () => {
+	it('captures a rejection in error and clears it on refetch', async () => {
 		let shouldFail = true;
 		const flaky = vi.fn(async () => {
 			if (shouldFail) throw new Error('offline');
@@ -104,14 +104,14 @@ describe('useFn', () => {
 			return 'recovered';
 		});
 
-		let refresh!: () => Promise<void>;
+		let refetch!: () => Promise<string | undefined>;
 
 		function Flaky() @{
-			const state = useFn(flaky);
+			const { data, error, refetch: again } = useQueryFn(flaky);
 
-			refresh = state.refresh;
+			refetch = again;
 
-			<p>{state.error instanceof Error ? state.error.message : (state.value ?? '')}</p>
+			<p>{error.value instanceof Error ? error.value.message : (data.value ?? '')}</p>
 		}
 
 		render_into_dom(Flaky);
@@ -122,7 +122,7 @@ describe('useFn', () => {
 		});
 
 		shouldFail = false;
-		await refresh();
+		await refetch();
 		await vi.waitFor(() => {
 			flushSync();
 			expect(container.querySelector('p')?.textContent).toBe('recovered');
@@ -135,20 +135,20 @@ describe('useFn', () => {
 		let call = 0;
 		const fn = vi.fn(() => (++call === 1 ? slow.promise : fast.promise));
 
-		let refresh!: () => Promise<void>;
+		let refetch!: () => Promise<string | undefined>;
 
 		function Race() @{
-			const state = useFn(fn);
+			const { data, refetch: again } = useQueryFn(fn);
 
-			refresh = state.refresh;
+			refetch = again;
 
-			<p>{state.value ?? ''}</p>
+			<p>{data.value ?? ''}</p>
 		}
 
 		render_into_dom(Race);
 		flushSync();
 
-		const second = refresh();
+		const second = refetch();
 
 		fast.resolve('newer');
 		await second;
@@ -157,5 +157,74 @@ describe('useFn', () => {
 		flushSync();
 
 		expect(container.querySelector('p')?.textContent).toBe('newer');
+	});
+});
+
+describe('useMutateFn', () => {
+	it('runs nothing until mutate(), then tracks loading, data and reset', async () => {
+		const gate = deferred<string>();
+		const save = vi.fn((name: string) => {
+			void name;
+
+			return gate.promise;
+		});
+
+		let mutate!: (name: string) => Promise<string | undefined>;
+		let reset!: () => void;
+
+		function Save() @{
+			const mutation = useMutateFn(save);
+
+			mutate = mutation.mutate;
+			reset = mutation.reset;
+
+			<p>{mutation.loading.value ? 'saving' : (mutation.data.value ?? 'idle')}</p>
+		}
+
+		render_into_dom(Save);
+		flushSync();
+
+		expect(save).not.toHaveBeenCalled();
+		expect(container.querySelector('p')?.textContent).toBe('idle');
+
+		const done = mutate('milk');
+
+		flushSync();
+		expect(container.querySelector('p')?.textContent).toBe('saving');
+
+		gate.resolve('saved');
+		expect(await done).toBe('saved');
+		flushSync();
+		expect(container.querySelector('p')?.textContent).toBe('saved');
+
+		reset();
+		flushSync();
+		expect(container.querySelector('p')?.textContent).toBe('idle');
+	});
+
+	it('mutate never rejects: the failure lands in error, the promise in undefined', async () => {
+		const explode = vi.fn(async () => {
+			throw new Error('nope');
+		});
+
+		let mutate!: () => Promise<never | undefined>;
+
+		function Boom() @{
+			const { mutate: run, error } = useMutateFn(explode);
+
+			mutate = run;
+
+			<p>{error.value instanceof Error ? error.value.message : 'fine'}</p>
+		}
+
+		render_into_dom(Boom);
+		flushSync();
+
+		expect(container.querySelector('p')?.textContent).toBe('fine');
+
+		// A bare onClick={() => mutate()} must not leak an unhandled rejection.
+		expect(await mutate()).toBeUndefined();
+		flushSync();
+		expect(container.querySelector('p')?.textContent).toBe('nope');
 	});
 });

@@ -288,41 +288,58 @@ export const listTodos = serverFn(async () => db.todos.all());
 ```
 
 Calling one from a route is just an import — in the browser bundle it is a
-stub, during SSR the real function. For loading data on mount, `useFn()` wraps
-the call in reactive state; when the result is an array the hook is itself
-iterable, typed to the element:
+stub, during SSR the real function. The hooks wrap the two call shapes,
+TanStack Query style: `useQueryFn()` loads on mount, `useMutateFn()` fires
+when told to. Both destructure without losing reactivity:
 
 ```tsrx
-import { useFn } from 'riproute';
-import { addTodo, listTodos } from '../lib/todos.server';
+import { useMutateFn, useQueryFn } from 'riproute';
+import { createTodo, listTodos } from '../lib/todos.server';
 
 export default function Todos() @{
-	const todos = useFn(listTodos); // runs once hydrated, never during SSR
+	// Runs once hydrated, never during SSR.
+	const { data, loading, error, refetch } = useQueryFn(listTodos);
+
+	const { mutate: addTodo, loading: adding } = useMutateFn(
+		async (text: string) => {
+			await createTodo(text);
+			await refetch();
+		}
+	);
 
 	<div>
-		@if (todos.loading) {
+		@if (loading.value) {
 			<p>{'Loading…'}</p>
 		}
 
 		<ul>
-			@for (const todo of todos; key todo.id) {
+			@for (const todo of data; key todo.id) {
 				<li>{todo.name}</li>
 			}
 		</ul>
 
-		<button onClick={async () => {
-			await addTodo('hello'); // event handlers call the function directly
-			await todos.refresh();
-		}}>{'Add'}</button>
+		<button
+			disabled={adding.value}
+			onClick={() => addTodo('hello')}
+		>{'Add'}</button>
 	</div>
 }
 ```
 
-`useFn(fn, ...args)` calls `fn(...args)` once the component reaches the
-browser and exposes `value` (the awaited result, `undefined` until it lands),
-`loading`, `error`, and `refresh(...args?)` — re-run with the original
-arguments or new ones; a superseded call can never overwrite a newer result.
-The page server-renders in its loading state and fills in after hydration.
+Every field is a reactive ref read with `.value` — destructured or not, it
+keeps updating — and an array-valued `data` is directly iterable, typed to
+the element, so `@for (const todo of data)` reads exactly as it should.
+
+- **`useQueryFn(fn, ...args)`** calls `fn(...args)` once the component
+  reaches the browser and exposes `data`, `loading`, `error` and
+  `refetch(...args?)` — re-run with the original arguments or new ones,
+  resolving with the value. A superseded call can never overwrite a newer
+  result, and the page server-renders in its loading state.
+- **`useMutateFn(fn)`** runs nothing until `mutate(...args)` is called.
+  `mutate` resolves with the result — or `undefined` on failure, with the
+  failure in `error`, never as a rejection, so a bare
+  `onClick={() => mutate(...)}` cannot leak an unhandled promise. `reset()`
+  returns to the initial state.
 
 Types flow through untouched: TypeScript checks the call against the source
 module, so `addTodo` keeps its signature and a wrong argument is a type error

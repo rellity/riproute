@@ -63,8 +63,8 @@ export {
 	useRouter,
 	useSearchParams,
 } from '../src/hooks/index';
-export { useFn } from '../src/hooks/use-fn';
-export type { UseFnResult } from '../src/hooks/use-fn';
+export { useMutateFn, useQueryFn } from '../src/hooks/use-fn';
+export type { FnData, UseMutateFnResult, UseQueryFnResult } from '../src/hooks/use-fn';
 
 export { LOCATION_PARAM, SERVER_FN_PREFIX, SPLAT_PARAM, SYMBOLS } from '../src/constants';
 export { IS_BROWSER } from '../src/env';

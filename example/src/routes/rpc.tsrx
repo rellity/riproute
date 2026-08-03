@@ -1,5 +1,4 @@
-import { track } from 'ripple';
-import { useFn } from 'riproute';
+import { useMutateFn, useQueryFn } from 'riproute';
 import { greet, listTodos } from '../lib/greeting.server';
 
 /**
@@ -7,28 +6,28 @@ import { greet, listTodos } from '../lib/greeting.server';
  * module during SSR and typed fetch stubs in the client bundle.
  */
 export default function Rpc() @{
-	let reply = track('');
+	// Load-on-mount: runs once hydrated (never during SSR), destructures
+	// without losing reactivity. `data.value` is typed from greet's return.
+	const { data: auto } = useQueryFn(greet, 'effect');
 
-	// The load-on-mount pattern: runs once hydrated (never during SSR), lands
-	// in reactive state. `auto.value` is typed from greet's return.
-	const auto = useFn(greet, 'effect');
+	// An array result makes `data` iterable — `todo` is a `Todo`.
+	const { data: todos, loading } = useQueryFn(listTodos);
 
-	// An array result makes the hook iterable — `todo` is a `Todo`.
-	const todos = useFn(listTodos);
+	// The write side: nothing runs until `mutate()` is called.
+	const { mutate: callGreet, data: reply, loading: greeting } = useMutateFn(greet);
 
 	<div>
 		<title append>{'server functions'}</title>
 		<h1>{'Server functions'}</h1>
 		<button
-			onClick={async () => {
-				const result = await greet('riproute');
-
-				reply.value = `${result.message} via ${result.via}`;
-			}}
+			disabled={greeting.value}
+			onClick={() => callGreet('riproute')}
 		>{'Call greet()'}</button>
-		<p id="rpc-reply">{reply.value}</p>
+		<p id="rpc-reply">{
+			reply.value === undefined ? '' : `${reply.value.message} via ${reply.value.via}`
+		}</p>
 		<p id="rpc-auto">{auto.value === undefined ? '' : auto.value.message}</p>
-		<ul id="rpc-todos">
+		<ul id="rpc-todos" data-loading={loading.value}>
 			@for (const todo of todos; key todo.id) {
 				<li>{todo.name}</li>
 			}

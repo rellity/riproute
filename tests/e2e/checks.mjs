@@ -133,7 +133,7 @@ export async function runChecks(baseUrl, label) {
 		rpcReply
 	);
 
-	// The load-on-mount pattern from the docs: useFn() calling a server
+	// The load-on-mount pattern from the docs: useQueryFn() calling a server
 	// function once hydrated. Also proves the reactive writes it makes do not
 	// desync hydration.
 	await page.waitForFunction(
@@ -141,9 +141,9 @@ export async function runChecks(baseUrl, label) {
 		undefined,
 		{ timeout: 5000 }
 	);
-	check('server function loads on mount via useFn', true);
+	check('server function loads on mount via useQueryFn', true);
 
-	// useFn's iterable form: @for over the hook itself, filled in when the
+	// useQueryFn data: @for over the destructured data ref, filled in when the
 	// array lands.
 	await page.waitForFunction(
 		() => document.querySelectorAll('#rpc-todos li').length === 3,
@@ -151,7 +151,7 @@ export async function runChecks(baseUrl, label) {
 		{ timeout: 5000 }
 	);
 	check(
-		'useFn iterates the loaded array in @for',
+		'useQueryFn data iterates the loaded array in @for',
 		(await page.textContent('#rpc-todos li:first-child')) === 'write a route'
 	);
 	check(
