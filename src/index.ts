@@ -20,7 +20,14 @@ export {
 	useSearchParams,
 } from './hooks/index';
 export { useMutateFn, useQueryFn } from './hooks/use-fn';
-export type { FnData, UseMutateFnResult, UseQueryFnResult } from './hooks/use-fn';
+export type {
+	FnCallbacks,
+	FnData,
+	UseMutateFnOptions,
+	UseMutateFnResult,
+	UseQueryFnOptions,
+	UseQueryFnResult,
+} from './hooks/use-fn';
 
 export { LOCATION_PARAM, SERVER_FN_PREFIX, SPLAT_PARAM, SYMBOLS } from './constants';
 export { IS_BROWSER } from './env';

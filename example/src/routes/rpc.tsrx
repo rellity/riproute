@@ -7,8 +7,9 @@ import { greet, listTodos } from '../lib/greeting.server';
  */
 export default function Rpc() @{
 	// Load-on-mount: runs once hydrated (never during SSR), destructures
-	// without losing reactivity. `data.value` is typed from greet's return.
-	const { data: auto } = useQueryFn(greet, 'effect');
+	// without losing reactivity. `data.value` is typed from greet's return;
+	// arguments ride in options, or in a closure — both stay typed.
+	const { data: auto } = useQueryFn(greet, { args: ['effect'] });
 
 	// An array result makes `data` iterable — `todo` is a `Todo`.
 	const { data: todos, loading } = useQueryFn(listTodos);

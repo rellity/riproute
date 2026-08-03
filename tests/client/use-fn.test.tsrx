@@ -57,7 +57,7 @@ describe('useQueryFn', () => {
 		expect(items).toEqual(['one', 'two']);
 	});
 
-	it('passes arguments through, typed, and refetch() re-runs', async () => {
+	it('passes options.args through, typed, and refetch() re-runs', async () => {
 		const calls: string[] = [];
 		const greet = vi.fn(async (name: string) => {
 			calls.push(name);
@@ -68,7 +68,7 @@ describe('useQueryFn', () => {
 		let refetch!: (...args: [string] | []) => Promise<string | undefined>;
 
 		function Greeting() @{
-			const greeting = useQueryFn(greet, 'ada');
+			const greeting = useQueryFn(greet, { args: ['ada'] });
 
 			refetch = greeting.refetch as never;
 
@@ -158,6 +158,107 @@ describe('useQueryFn', () => {
 
 		expect(container.querySelector('p')?.textContent).toBe('newer');
 	});
+
+	it('fires callbacks in order and holds loading until they settle', async () => {
+		const order: string[] = [];
+		const gate = deferred<void>();
+
+		function Watched() @{
+			const { loading } = useQueryFn(async (tag: string) => `got ${tag}`, {
+				args: ['x'],
+				onRequest: (tag) => {
+					order.push(`request:${tag}`);
+				},
+				onSuccess: async (data, tag) => {
+					order.push(`success:${data}:${tag}`);
+					await gate.promise;
+				},
+				onSettled: (data, error) => {
+					order.push(`settled:${data}:${String(error)}`);
+				},
+			});
+
+			<p>{loading.value ? 'loading' : 'done'}</p>
+		}
+
+		render_into_dom(Watched);
+		flushSync();
+
+		// onSuccess is still awaiting its gate: the call counts as loading.
+		await vi.waitFor(() => {
+			expect(order).toContain('success:got x:x');
+		});
+		flushSync();
+		expect(container.querySelector('p')?.textContent).toBe('loading');
+
+		gate.resolve();
+		await vi.waitFor(() => {
+			flushSync();
+			expect(container.querySelector('p')?.textContent).toBe('done');
+		});
+
+		expect(order).toEqual(['request:x', 'success:got x:x', 'settled:got x:null']);
+	});
+
+	it('routes a failure through onError, then onSettled', async () => {
+		const order: string[] = [];
+
+		function Failing() @{
+			const { error } = useQueryFn(
+				async () => {
+					throw new Error('offline');
+				},
+				{
+					onSuccess: () => {
+						order.push('success');
+					},
+					onError: (thrown) => {
+						order.push(`error:${thrown instanceof Error ? thrown.message : '?'}`);
+					},
+					onSettled: (data, thrown) => {
+						order.push(
+							`settled:${String(data)}:${thrown instanceof Error ? thrown.message : '?'}`
+						);
+					},
+				}
+			);
+
+			<p>{error.value instanceof Error ? error.value.message : ''}</p>
+		}
+
+		render_into_dom(Failing);
+
+		await vi.waitFor(() => {
+			flushSync();
+			expect(container.querySelector('p')?.textContent).toBe('offline');
+		});
+
+		expect(order).toEqual(['error:offline', 'settled:undefined:offline']);
+	});
+
+	it('enabled: false skips the automatic call but leaves refetch armed', async () => {
+		const fn = vi.fn(async () => 'manual');
+
+		let refetch!: () => Promise<string | undefined>;
+
+		function Lazy() @{
+			const { data, loading, refetch: again } = useQueryFn(fn, { enabled: false });
+
+			refetch = again;
+
+			<p>{loading.value ? 'loading' : (data.value ?? 'idle')}</p>
+		}
+
+		render_into_dom(Lazy);
+		flushSync();
+
+		expect(fn).not.toHaveBeenCalled();
+		expect(container.querySelector('p')?.textContent).toBe('idle');
+
+		await refetch();
+		flushSync();
+		expect(container.querySelector('p')?.textContent).toBe('manual');
+	});
 });
 
 describe('useMutateFn', () => {
@@ -226,5 +327,45 @@ describe('useMutateFn', () => {
 		expect(await mutate()).toBeUndefined();
 		flushSync();
 		expect(container.querySelector('p')?.textContent).toBe('nope');
+	});
+
+	it('onSuccess is where a mutation refreshes its query', async () => {
+		let listed = 0;
+		const listTodos = vi.fn(async () => [`todo ${++listed}`]);
+		const createTodo = vi.fn(async (name: string) => name);
+
+		let mutate!: (name: string) => Promise<string | undefined>;
+
+		function Todos() @{
+			const todos = useQueryFn(listTodos);
+			const mutation = useMutateFn(createTodo, {
+				onSuccess: async () => {
+					await todos.refetch();
+				},
+			});
+
+			mutate = mutation.mutate;
+
+			<ul>
+				@for (const todo of todos.data; key todo) {
+					<li>{todo}</li>
+				}
+			</ul>
+		}
+
+		render_into_dom(Todos);
+
+		await vi.waitFor(() => {
+			flushSync();
+			expect(container.querySelector('li')?.textContent).toBe('todo 1');
+		});
+
+		await mutate('anything');
+		await vi.waitFor(() => {
+			flushSync();
+			expect(container.querySelector('li')?.textContent).toBe('todo 2');
+		});
+
+		expect(createTodo).toHaveBeenCalledWith('anything');
 	});
 });

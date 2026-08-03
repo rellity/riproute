@@ -300,12 +300,9 @@ export default function Todos() @{
 	// Runs once hydrated, never during SSR.
 	const { data, loading, error, refetch } = useQueryFn(listTodos);
 
-	const { mutate: addTodo, loading: adding } = useMutateFn(
-		async (text: string) => {
-			await createTodo(text);
-			await refetch();
-		}
-	);
+	const { mutate: addTodo, loading: adding } = useMutateFn(createTodo, {
+		onSuccess: () => refetch(),
+	});
 
 	<div>
 		@if (loading.value) {
@@ -330,16 +327,26 @@ Every field is a reactive ref read with `.value` — destructured or not, it
 keeps updating — and an array-valued `data` is directly iterable, typed to
 the element, so `@for (const todo of data)` reads exactly as it should.
 
-- **`useQueryFn(fn, ...args)`** calls `fn(...args)` once the component
+- **`useQueryFn(fn, options?)`** calls the function once the component
   reaches the browser and exposes `data`, `loading`, `error` and
   `refetch(...args?)` — re-run with the original arguments or new ones,
   resolving with the value. A superseded call can never overwrite a newer
   result, and the page server-renders in its loading state.
-- **`useMutateFn(fn)`** runs nothing until `mutate(...args)` is called.
-  `mutate` resolves with the result — or `undefined` on failure, with the
-  failure in `error`, never as a rejection, so a bare
+- **`useMutateFn(fn, options?)`** runs nothing until `mutate(...args)` is
+  called. `mutate` resolves with the result — or `undefined` on failure, with
+  the failure in `error`, never as a rejection, so a bare
   `onClick={() => mutate(...)}` cannot leak an unhandled promise. `reset()`
   returns to the initial state.
+
+Options are always optional, TanStack style. Both hooks take the lifecycle
+callbacks `onRequest(...args)`, `onSuccess(data, ...args)`,
+`onError(error, ...args)` and `onSettled(data, error, ...args)` — each may be
+async, and the call counts as loading until they settle. Queries additionally
+take `args` (arguments for the automatic call — a closure like
+`useQueryFn(() => getUser(id))` works just as well) and `enabled: false` to
+skip the automatic call while leaving `refetch()` armed. Everything is typed
+against the function: `onSuccess` receives its awaited return and its
+arguments.
 
 Types flow through untouched: TypeScript checks the call against the source
 module, so `addTodo` keeps its signature and a wrong argument is a type error
