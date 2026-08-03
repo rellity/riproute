@@ -184,6 +184,27 @@ export function createServerFnDispatch(
 			return json({ ok: false, error: 'Server functions are called with POST.' }, 405);
 		}
 
+		// CSRF defense. A server function is state-changing and runs with the
+		// caller's ambient credentials, so a cross-origin page must not be able
+		// to invoke it. Requiring `application/json` is the load-bearing check:
+		// it is not a CORS-safelisted content type, so a cross-origin `fetch`
+		// must preflight, and the preflight fails with no CORS headers on the
+		// reply — while a same-origin call (the generated stub) sends exactly
+		// this. `Sec-Fetch-Site` is a belt-and-braces reject for browsers that
+		// send it; absent (non-browser clients) it simply does not apply.
+		const contentType = request.headers.get('content-type') ?? '';
+
+		if (!/^application\/json\s*(?:;|$)/i.test(contentType.trim())) {
+			return json(
+				{ ok: false, error: 'Server functions require Content-Type: application/json.' },
+				415
+			);
+		}
+
+		if (request.headers.get('sec-fetch-site') === 'cross-site') {
+			return json({ ok: false, error: 'Cross-site server function calls are refused.' }, 403);
+		}
+
 		let args: unknown;
 
 		try {

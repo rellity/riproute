@@ -48,6 +48,17 @@ export function serveStatic(
 	options: ServeStaticOptions = {}
 ): (request: Request) => Promise<Response | undefined> {
 	const root = path.resolve(dir);
+	// Canonical root, so a served dir reached through a symlinked ancestor
+	// (e.g. `/tmp` -> `/private/tmp`) does not make every real file look like an
+	// escape when its resolved path is compared below.
+	let realRoot: string;
+
+	try {
+		realRoot = fs.realpathSync(root);
+	} catch {
+		realRoot = root;
+	}
+
 	const immutable = (options.immutable ?? []).map((entry) => `/${trim(entry)}/`);
 	const cacheControl = options.cacheControl ?? 'public, max-age=0, must-revalidate';
 
@@ -66,6 +77,20 @@ export function serveStatic(
 
 		// `path.join` normalises `..`, so this catches traversal after the fact.
 		if (file !== root && !file.startsWith(root + path.sep)) return undefined;
+
+		// The check above is lexical — it only sees the request path. `stat` and
+		// `createReadStream` follow symlinks, so a symlink *inside* root pointing
+		// out of it would otherwise escape. Resolve the real target and re-check
+		// containment against the canonical root.
+		let real: string;
+
+		try {
+			real = await fsp.realpath(file);
+		} catch {
+			return undefined;
+		}
+
+		if (real !== realRoot && !real.startsWith(realRoot + path.sep)) return undefined;
 
 		let stats: fs.Stats;
 

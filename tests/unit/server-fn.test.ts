@@ -134,6 +134,7 @@ describe('createServerFnDispatch', () => {
 		dispatch(
 			new Request(`http://test/__riproute/serverfn/${hash}`, {
 				method: 'POST',
+				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify(body),
 				...init,
 			})
@@ -142,6 +143,50 @@ describe('createServerFnDispatch', () => {
 	it('lets every other path through untouched', async () => {
 		expect(await dispatch(new Request('http://test/about'))).toBeUndefined();
 		expect(await dispatch(new Request('http://test/__riproute/other'))).toBeUndefined();
+	});
+
+	it('refuses a cross-origin call (CSRF): no application/json, no run', async () => {
+		let ran = false;
+		const guarded = createServerFnDispatch({
+			h: { name: 'fn', load: async () => ({ fn: serverFn(async () => (ran = true)) }) },
+		});
+		const at = (init: RequestInit) =>
+			guarded(new Request('http://test/__riproute/serverfn/h', { method: 'POST', ...init }));
+
+		// A cross-origin form/fetch can only send a CORS-safelisted content type;
+		// none of these is application/json, so all are refused before the body
+		// is even read — and the function never runs.
+		for (const ct of [
+			'text/plain',
+			'application/x-www-form-urlencoded',
+			'multipart/form-data',
+		]) {
+			const res = await at({ headers: { 'content-type': ct }, body: '{"args":[]}' });
+
+			expect(res?.status).toBe(415);
+		}
+
+		// Missing content type entirely — still refused.
+		expect((await at({ body: '{"args":[]}' }))?.status).toBe(415);
+
+		// A browser that tells us the call is cross-site is refused even with the
+		// right content type.
+		const crossSite = await at({
+			headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' },
+			body: '{"args":[]}',
+		});
+
+		expect(crossSite?.status).toBe(403);
+		expect(ran).toBe(false);
+
+		// The legitimate same-origin stub sends application/json and goes through.
+		const ok = await at({
+			headers: { 'content-type': 'application/json; charset=utf-8' },
+			body: '{"args":[]}',
+		});
+
+		expect(ok?.status).toBe(200);
+		expect(ran).toBe(true);
 	});
 
 	it('runs a marked function and returns its result', async () => {
@@ -306,6 +351,7 @@ describe('serverFn builder', () => {
 		const response = await dispatch(
 			new Request('http://test/__riproute/serverfn/fnhash', {
 				method: 'POST',
+				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ args: ['ada'] }),
 			})
 		);

@@ -89,6 +89,7 @@ export type { CompiledRoutePath } from '../src/utils/match-routes';
 export {
 	buildHref,
 	isExternalUrl,
+	isSafeHref,
 	normalizeBase,
 	normalizePathname,
 	parseLocation,

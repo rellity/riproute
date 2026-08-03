@@ -45,6 +45,7 @@ export type { CompiledRoutePath } from './utils/match-routes';
 export {
 	buildHref,
 	isExternalUrl,
+	isSafeHref,
 	normalizeBase,
 	normalizePathname,
 	parseLocation,

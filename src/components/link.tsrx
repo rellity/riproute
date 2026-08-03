@@ -2,7 +2,7 @@ import { track } from 'ripple';
 
 import { RouterContext } from '../contexts/router-context';
 import type { LinkProps } from '../types/index';
-import { isExternalUrl, withBase } from '../utils/location';
+import { isExternalUrl, isSafeHref, withBase } from '../utils/location';
 import { isPathActive } from '../utils/match-routes';
 import navigateTo from '../utils/navigate-to';
 import { parseLocation } from '../utils/location';
@@ -39,11 +39,16 @@ export function Link({
 	// May be `undefined`: a `<Link>` outside a `<Router>` still renders a
 	// perfectly good anchor, it just cannot be "active" or use a base path.
 	const router = RouterContext.get();
-	const external = isExternalUrl(href);
-	const target = external ? href : withBase(href, router?.base ?? '');
+	// A `javascript:`/`data:`/`vbscript:` href executes on click; refuse it
+	// rather than render it, so a `<Link href={userValue}>` cannot become an
+	// XSS sink. An unsafe href produces an anchor with no `href` at all.
+	const safe = isSafeHref(href);
+	const external = safe && isExternalUrl(href);
+	const target = !safe ? undefined : external ? href : withBase(href, router?.base ?? '');
 
 	const active = track(() => {
-		if (external || router === undefined || activeClass === undefined) return false;
+		if (target === undefined || external || router === undefined || activeClass === undefined)
+			return false;
 
 		return isPathActive(
 			router.location.value.pathname,
@@ -62,6 +67,8 @@ export function Link({
 		onClick?.(event);
 
 		if (event.defaultPrevented) return;
+		// No target means the href was refused as unsafe — nothing to navigate to.
+		if (target === undefined) return;
 		if (external) return;
 		// Only plain left-clicks: everything else means "open somewhere else".
 		if (event.button !== 0) return;

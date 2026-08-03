@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -187,6 +188,24 @@ describe('serveStatic', () => {
 		expect(await serve(new Request('http://t/assets/%2e%2e/robots.txt'))).toBeDefined();
 	});
 
+	it('refuses a symlink that escapes the root', async () => {
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'riproute-outside-'));
+
+		fs.writeFileSync(path.join(outside, 'secret.txt'), 'TOP SECRET');
+		fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(dir, 'leak.txt'));
+		// A symlink pointing to a file *inside* root is fine and still served.
+		fs.symlinkSync(path.join(dir, 'robots.txt'), path.join(dir, 'alias.txt'));
+
+		try {
+			expect(await serve(new Request('http://t/leak.txt'))).toBeUndefined();
+			expect((await serve(new Request('http://t/alias.txt')))?.status).toBe(200);
+		} finally {
+			fs.rmSync(outside, { recursive: true, force: true });
+			fs.rmSync(path.join(dir, 'leak.txt'), { force: true });
+			fs.rmSync(path.join(dir, 'alias.txt'), { force: true });
+		}
+	});
+
 	it('only answers GET and HEAD', async () => {
 		expect(await serve(new Request('http://t/robots.txt', { method: 'POST' }))).toBeUndefined();
 	});
@@ -226,6 +245,39 @@ describe('createServer', () => {
 
 			expect(raw.encoding).toBe('gzip');
 			expect(raw.size).toBeLessThan(big.length / 5);
+		} finally {
+			await server.close();
+		}
+	});
+
+	it('answers 400 to a malformed Host header instead of crashing', async () => {
+		const server = createServer(() => new Response('ok'), { gracefulShutdown: false });
+		const { port } = await server.listen({ port: 0, host: '127.0.0.1' });
+
+		try {
+			// `Host: a b` is a legal HTTP field-value but an illegal URL authority,
+			// so `new URL()` throws while building the request. That throw must
+			// become a 400, not an unhandled rejection that kills the process.
+			const statusLine = await new Promise<string>((resolve, reject) => {
+				const socket = net.connect(port, '127.0.0.1', () => {
+					socket.write('GET / HTTP/1.1\r\nHost: a b\r\nConnection: close\r\n\r\n');
+				});
+
+				let buffer = '';
+
+				socket.setEncoding('utf8');
+				socket.on('data', (chunk) => (buffer += chunk));
+				socket.on('end', () => resolve(buffer.split('\r\n')[0] ?? ''));
+				socket.on('error', reject);
+			});
+
+			expect(statusLine).toContain('400');
+
+			// The process is still alive — a normal request is still answered.
+			const ok = await fetch(`http://127.0.0.1:${port}/`);
+
+			expect(ok.status).toBe(200);
+			expect(await ok.text()).toBe('ok');
 		} finally {
 			await server.close();
 		}

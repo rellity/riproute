@@ -79,6 +79,33 @@ export function isExternalUrl(url: string): boolean {
 	return /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//');
 }
 
+/** Schemes that are safe to place in an `<a href>` and navigate to. */
+const SAFE_SCHEME = /^(?:https?|mailto|tel|ftp|sms):/i;
+
+/**
+ * Whether an href is safe to render into an anchor.
+ *
+ * A `javascript:`, `data:` or `vbscript:` URL runs script or renders active
+ * content the moment the link is clicked — an XSS sink whenever the href comes
+ * from user or database content. Only known navigational schemes (and
+ * protocol-relative or relative URLs, which resolve to the current scheme) are
+ * allowed; everything else is refused.
+ *
+ * Control characters and ASCII whitespace are stripped before the scheme is
+ * read, because browsers ignore them when resolving one — `java\tscript:` is
+ * `javascript:` to a browser, so it must be to this check too.
+ */
+export function isSafeHref(url: string): boolean {
+	const stripped = url.replace(/[\u0000-\u0020]+/g, '');
+
+	if (stripped.startsWith('//')) return true; // protocol-relative → http(s)
+
+	const scheme = /^[a-z][a-z0-9+.-]*:/i.exec(stripped);
+
+	// No scheme at all is a relative or absolute-path URL — always same-origin.
+	return scheme === null || SAFE_SCHEME.test(stripped);
+}
+
 /**
  * Parses any absolute-or-relative URL into a `RouterLocation`.
  */

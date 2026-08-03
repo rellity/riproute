@@ -370,6 +370,12 @@ endpoint refuses to run anything unmarked — so the `db` sitting next to
 server function, and anywhere in a server render. Server functions run _after_
 `onRequest` hooks, so an auth gate in `hooks.server.ts` covers them too.
 
+Calls must send `Content-Type: application/json` — the generated stub always
+does. This is the CSRF defense: `application/json` is not a CORS-safelisted
+content type, so a cross-origin page cannot invoke a server function without a
+preflight it has no way to pass. A non-browser client (curl, another service)
+must set the header explicitly.
+
 ## Endpoints and hooks
 
 Server functions replace most hand-written JSON endpoints; what stays in

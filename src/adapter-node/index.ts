@@ -63,7 +63,20 @@ export function createServer(handler: Handler, options: AdapterOptions = {}): Ri
 		inflight++;
 
 		void (async () => {
-			const request = toWebRequest(req, options);
+			// Building the request can throw — a malformed `Host` header makes the
+			// URL unconstructable. That must become a 400, not an escaped
+			// rejection: this task is fire-and-forget, so a throw here would be an
+			// unhandled rejection and, on Node >= 15, kill the whole process.
+			let request: Request;
+
+			try {
+				request = toWebRequest(req, options);
+			} catch {
+				res.statusCode = 400;
+				res.setHeader('content-type', 'text/plain; charset=utf-8');
+				res.end('Bad Request');
+				return;
+			}
 
 			try {
 				let response = await handler(request);
@@ -75,12 +88,26 @@ export function createServer(handler: Handler, options: AdapterOptions = {}): Ri
 				await sendWebResponse(res, response);
 			} catch (error) {
 				await sendWebResponse(res, await toErrorResponse(error, request, options));
-			} finally {
+			}
+		})()
+			// Last-resort backstop: nothing above should reject, but a socket that
+			// dies mid-write could. Swallow it rather than let it crash the process.
+			.catch((error) => {
+				// eslint-disable-next-line no-console
+				console.error('[riproute] request pipeline error\n', error);
+
+				try {
+					if (!res.headersSent && !res.writableEnded) res.statusCode = 500;
+					if (!res.writableEnded) res.end();
+				} catch {
+					res.destroy();
+				}
+			})
+			.finally(() => {
 				inflight--;
 
 				if (inflight === 0 && draining !== null) draining();
-			}
-		})();
+			});
 	};
 
 	const raw = http.createServer(middleware);
