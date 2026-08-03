@@ -1,11 +1,16 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createServerFnStub } from '../../src/server-fn-client';
+import { isClientEnvironment } from '../../src/vite/package-root';
+import { serverFnClientPlugin } from '../../src/vite/server-fn';
 import {
 	createServerFnDispatch,
 	getRequestEvent,
 	serverFn,
+	ServerFnError,
 	withRequestEvent,
 } from '../../src/server/server-fn';
 import {
@@ -113,6 +118,54 @@ describe('isServerFnFile', () => {
 	});
 });
 
+describe('client-environment gating', () => {
+	it('keys on consumer, not the environment name', () => {
+		expect(isClientEnvironment({ config: { consumer: 'client' } })).toBe(true);
+		// A renamed environment that is a server build must not read as client.
+		expect(isClientEnvironment({ name: 'client', config: { consumer: 'server' } })).toBe(false);
+		expect(isClientEnvironment(undefined)).toBe(false);
+	});
+
+	it('the load-swap fires only for a client consumer, matching the guard', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'riproute-serverfn-'));
+		const file = path.join(dir, 'x.server.ts');
+
+		fs.writeFileSync(
+			file,
+			"import { serverFn } from 'riproute/server';\nexport const a = serverFn(async () => 1);\n"
+		);
+
+		const plugin = serverFnClientPlugin() as never as {
+			configResolved: (config: { root: string }) => void;
+			load: (this: unknown, id: string) => Promise<{ code: string } | null>;
+		};
+
+		plugin.configResolved({ root: dir });
+
+		try {
+			// Client consumer → the real module is swapped for a stub.
+			const client = await plugin.load.call(
+				{ environment: { config: { consumer: 'client' } } },
+				file
+			);
+
+			expect(client?.code).toContain('createServerFnStub');
+
+			// A server-consumer environment (even if it were named "client") never
+			// swaps — the same predicate the guard now uses, so the two cannot
+			// disagree and leave the real module in a client graph.
+			const server = await plugin.load.call(
+				{ environment: { name: 'client', config: { consumer: 'server' } } },
+				file
+			);
+
+			expect(server).toBeNull();
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
 describe('createServerFnDispatch', () => {
 	const add = serverFn(async (a: number, b: number) => a + b);
 	const whoami = serverFn(async () => new URL(getRequestEvent().request.url).pathname);
@@ -216,11 +269,87 @@ describe('createServerFnDispatch', () => {
 		}
 	});
 
-	it('turns a thrown error into a 500 envelope', async () => {
+	it('hides a bare throw behind a generic 500, never leaking the message', async () => {
 		const response = await call('boomhash', { args: [] });
 
 		expect(response?.status).toBe(500);
-		expect(await response?.json()).toEqual({ ok: false, error: 'kaput' });
+		// `boom` throws `new Error('kaput')`; the real message stays server-side.
+		expect(await response?.json()).toEqual({ ok: false, error: 'Server function failed.' });
+	});
+
+	it('surfaces a ServerFnError message and status to the client', async () => {
+		const denied = serverFn(async () => {
+			throw new ServerFnError('not allowed', { status: 403 });
+		});
+		const guarded = createServerFnDispatch({
+			h: { name: 'fn', load: async () => ({ fn: denied }) },
+		});
+
+		const response = await guarded(
+			new Request('http://test/__riproute/serverfn/h', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ args: [] }),
+			})
+		);
+
+		expect(response?.status).toBe(403);
+		expect(await response?.json()).toEqual({ ok: false, error: 'not allowed' });
+	});
+
+	it('resolves the target before reading the body, so unknown hashes cost nothing', async () => {
+		const dispatchSpy = createServerFnDispatch({
+			real: { name: 'fn', load: async () => ({ fn: serverFn(async () => 'ok') }) },
+		});
+
+		const unknown = new Request('http://test/__riproute/serverfn/nosuch', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ args: [] }),
+		});
+		const known = new Request('http://test/__riproute/serverfn/real', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ args: [] }),
+		});
+
+		expect((await dispatchSpy(unknown))?.status).toBe(404);
+		// The 404 came back without ever touching the body.
+		expect(unknown.bodyUsed).toBe(false);
+
+		// A real call does read it, so the check above is meaningful.
+		expect((await dispatchSpy(known))?.status).toBe(200);
+		expect(known.bodyUsed).toBe(true);
+	});
+
+	it('refuses a body past the size limit with 413', async () => {
+		const tiny = createServerFnDispatch(
+			{ real: { name: 'fn', load: async () => ({ fn: serverFn(async () => 'ok') }) } },
+			undefined,
+			{ maxBodyBytes: 8 }
+		);
+
+		const response = await tiny(
+			new Request('http://test/__riproute/serverfn/real', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ args: ['0123456789'] }),
+			})
+		);
+
+		expect(response?.status).toBe(413);
+	});
+
+	it('answers a prototype-chain key as a clean 404, not a 500', async () => {
+		for (const hash of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+			const response = await call(hash, { args: [] });
+
+			expect(response?.status).toBe(404);
+			expect(await response?.json()).toEqual({
+				ok: false,
+				error: 'Unknown server function.',
+			});
+		}
 	});
 
 	it('rejects non-POST and malformed bodies', async () => {
@@ -241,6 +370,33 @@ describe('getRequestEvent', () => {
 		const request = new Request('http://test/page');
 
 		expect(withRequestEvent(request, () => getRequestEvent().request)).toBe(request);
+	});
+
+	it('reuses the open context for the same request, so locals survive nesting', () => {
+		const request = new Request('http://test/page');
+
+		// The handler opens the context and a hook writes to locals; the dispatch
+		// then wraps the call in withRequestEvent again — the server function must
+		// still see what the hook wrote, not a fresh empty locals.
+		const seen = withRequestEvent(request, () => {
+			getRequestEvent().locals.user = 'ada';
+
+			return withRequestEvent(request, () => getRequestEvent().locals.user);
+		});
+
+		expect(seen).toBe('ada');
+
+		// A different request never shares another's context.
+		const other = withRequestEvent(request, () => {
+			getRequestEvent().locals.user = 'grace';
+
+			return withRequestEvent(
+				new Request('http://test/other'),
+				() => getRequestEvent().locals.user
+			);
+		});
+
+		expect(other).toBeUndefined();
 	});
 });
 

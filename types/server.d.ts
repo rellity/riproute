@@ -86,6 +86,17 @@ export declare function serverFn<T extends (...args: never[]) => unknown>(fn: T)
  */
 export declare function getRequestEvent(): RequestEvent;
 
+/**
+ * An error whose message is safe to return to the caller. A bare `throw`
+ * inside a server function reaches the client as a generic message (the real
+ * error is logged server-side); throw this when the message is meant for the
+ * client, with the status the response should carry.
+ */
+export declare class ServerFnError extends Error {
+	readonly status: number;
+	constructor(message: string, options?: { status?: number });
+}
+
 export type ServerFnTable = Record<
 	string,
 	{ name: string; load: () => Promise<Record<string, unknown>> }

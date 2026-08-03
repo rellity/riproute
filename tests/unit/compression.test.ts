@@ -12,6 +12,20 @@ describe('negotiateEncoding', () => {
 
 	it('respects q=0', () => {
 		expect(negotiateEncoding('br;q=0, gzip')).toBe('gzip');
+		expect(negotiateEncoding('br;q=0.0, gzip')).toBe('gzip');
+		expect(negotiateEncoding('br;q=0, gzip;q=0')).toBeNull();
+	});
+
+	it('accepts a down-weighted encoding (q between 0 and 1)', () => {
+		// The old lookahead read `br;q=0.5` as a refusal — it is an acceptance.
+		expect(negotiateEncoding('br;q=0.5')).toBe('br');
+		expect(negotiateEncoding('gzip;q=0.7')).toBe('gzip');
+		expect(negotiateEncoding('br;q=0.001, gzip;q=0.9')).toBe('br');
+	});
+
+	it('honours a wildcard', () => {
+		expect(negotiateEncoding('*')).toBe('br');
+		expect(negotiateEncoding('br;q=0, *')).toBe('gzip');
 	});
 });
 
@@ -45,6 +59,15 @@ describe('shouldCompress', () => {
 		const headers = new Headers({
 			'content-type': 'text/html',
 			'content-range': 'bytes 0-99/1000',
+		});
+
+		expect(shouldCompress(headers, 50_000)).toBe(false);
+	});
+
+	it('honours Cache-Control: no-transform (BREACH opt-out)', () => {
+		const headers = new Headers({
+			'content-type': 'text/html',
+			'cache-control': 'private, no-transform',
 		});
 
 		expect(shouldCompress(headers, 50_000)).toBe(false);

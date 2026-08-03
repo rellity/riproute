@@ -91,6 +91,17 @@ describe('toWebRequest', () => {
 		expect(new URL(request.url).host).toBe('a.test');
 	});
 
+	it('refuses a host outside allowedHosts', () => {
+		const opts = { allowedHosts: ['app.test'] };
+
+		expect(toWebRequest(fakeRequest({ headers: { host: 'app.test' } }), opts).url).toBe(
+			'http://app.test/'
+		);
+		expect(() => toWebRequest(fakeRequest({ headers: { host: 'evil.test' } }), opts)).toThrow(
+			/Refused Host/
+		);
+	});
+
 	it('streams a request body', async () => {
 		const request = toWebRequest(fakeRequest({ method: 'POST', body: '{"a":1}', headers: {} }));
 
@@ -142,6 +153,8 @@ describe('serveStatic', () => {
 	fs.writeFileSync(path.join(dir, 'assets/app-abc123.js'), 'console.log(1);');
 	fs.writeFileSync(path.join(dir, 'robots.txt'), 'User-agent: *');
 	fs.writeFileSync(path.join(dir, 'index.html'), '<html></html>');
+	fs.writeFileSync(path.join(dir, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+	fs.writeFileSync(path.join(dir, '.env'), 'SECRET=1');
 
 	const serve = serveStatic(dir, { immutable: ['assets'] });
 
@@ -204,6 +217,24 @@ describe('serveStatic', () => {
 			fs.rmSync(path.join(dir, 'leak.txt'), { force: true });
 			fs.rmSync(path.join(dir, 'alias.txt'), { force: true });
 		}
+	});
+
+	it('sends nosniff on every response', async () => {
+		const response = await serve(new Request('http://t/robots.txt'));
+
+		expect(response?.headers.get('x-content-type-options')).toBe('nosniff');
+	});
+
+	it('sandboxes SVG so it cannot run script when opened directly', async () => {
+		const response = await serve(new Request('http://t/icon.svg'));
+
+		expect(response?.headers.get('content-type')).toBe('image/svg+xml');
+		expect(response?.headers.get('content-security-policy')).toBe('sandbox');
+	});
+
+	it('never serves a dotfile', async () => {
+		expect(await serve(new Request('http://t/.env'))).toBeUndefined();
+		expect(await serve(new Request('http://t/%2e%65nv'))).toBeUndefined();
 	});
 
 	it('only answers GET and HEAD', async () => {

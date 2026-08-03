@@ -262,13 +262,13 @@ the client bundle:
 
 ```ts
 // src/lib/todos.server.ts
-import { serverFn, getRequestEvent } from 'riproute/server';
+import { serverFn, getRequestEvent, ServerFnError } from 'riproute/server';
 import type { ServerFnMiddleware } from 'riproute/server';
 
 const requireUser: ServerFnMiddleware = async (event, next) => {
 	const user = await sessionUser(event.request); // cookies, headers
 
-	if (user === null) throw new Error('unauthorized');
+	if (user === null) throw new ServerFnError('Not signed in.', { status: 401 });
 
 	event.locals.user = user; // handed to the handler
 
@@ -358,6 +358,13 @@ is called (RPC or direct), in the order given. Call `next()` to continue —
 its value is the handler's result, yours to pass through or replace — return
 without calling it to short-circuit, or throw to fail the call. `event.locals`
 is per-request scratch space shared with the handler.
+
+Errors don't leak. A bare `throw` inside a server function reaches the browser
+as a generic `"Server function failed."` (status 500) while the real error is
+logged server-side, so a database message or a file path never crosses the
+wire. When the message _is_ meant for the client — a validation error, "not
+found", "unauthorized" — throw a `ServerFnError`, whose message and status are
+sent as written.
 
 The wrapper is the security boundary, not ceremony. Only `serverFn()` exports
 exist in the browser's view of the module: importing anything else from a

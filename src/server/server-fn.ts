@@ -23,6 +23,25 @@ import { SERVER_FN_PREFIX } from '../constants';
  */
 const MARKER = Symbol.for('riproute.serverFn');
 
+/**
+ * An error whose message is safe to show the caller.
+ *
+ * By default a server function's failure reaches the browser as a generic
+ * "Server function failed." — the real error is logged server-side, so a DB
+ * message, a file path or a stack fragment never leaks. Throw a `ServerFnError`
+ * when the message *is* meant for the client (a validation message, "not
+ * found", "unauthorized"), with the status the response should carry.
+ */
+export class ServerFnError extends Error {
+	readonly status: number;
+
+	constructor(message: string, options: { status?: number } = {}) {
+		super(message);
+		this.name = 'ServerFnError';
+		this.status = options.status ?? 400;
+	}
+}
+
 export type RequestEvent = {
 	/** The request being served — the RPC call, or the page being rendered. */
 	request: Request;
@@ -146,8 +165,20 @@ export function getRequestEvent(): RequestEvent {
 	return event;
 }
 
-/** Opens the request context around `run`. Used by the handler and the dispatch. */
+/**
+ * Opens the request context around `run`. Used by the handler and the dispatch.
+ *
+ * Reuses an already-open context for the same request rather than nesting a
+ * fresh one: the handler opens a context for the whole request, then the RPC
+ * dispatch wraps the actual call. Without this reuse the server function would
+ * see a second, empty `locals` and lose anything `hooks.onRequest` wrote — an
+ * auth footgun where an allow-list check reads `undefined` and fails open.
+ */
 export function withRequestEvent<T>(request: Request, run: () => T): T {
+	const existing = storage.getStore();
+
+	if (existing !== undefined && existing.request === request) return run();
+
 	return storage.run({ request, locals: {} }, run);
 }
 
@@ -171,10 +202,18 @@ export type ServerFnTable = Record<
  * without the `serverFn` mark — gets the same 404, so the endpoint cannot be
  * used to probe what exists on the server.
  */
+export type ServerFnDispatchOptions = {
+	/** Reject a request body larger than this many bytes with 413. Default 1 MiB. */
+	maxBodyBytes?: number;
+};
+
 export function createServerFnDispatch(
 	functions: ServerFnTable,
-	prefix: string = SERVER_FN_PREFIX
+	prefix: string = SERVER_FN_PREFIX,
+	options: ServerFnDispatchOptions = {}
 ): (request: Request) => Promise<Response | undefined> {
+	const maxBodyBytes = options.maxBodyBytes ?? 1_048_576;
+
 	return async (request) => {
 		const pathname = new URL(request.url).pathname;
 
@@ -205,21 +244,32 @@ export function createServerFnDispatch(
 			return json({ ok: false, error: 'Cross-site server function calls are refused.' }, 403);
 		}
 
+		// Resolve the target *before* reading the body: an unknown endpoint costs
+		// nothing, so a flood of junk POSTs cannot make the server buffer their
+		// bodies. `hasOwn`, not `functions[hash]`, so a prototype-chain key like
+		// `__proto__` or `constructor` is a clean 404 rather than an inherited
+		// value that slips past an `=== undefined` check into a 500.
+		const hash = pathname.slice(prefix.length);
+
+		if (!Object.hasOwn(functions, hash)) return unknownFunction();
+
+		const entry = functions[hash];
+
 		let args: unknown;
 
 		try {
-			({ args } = (await request.json()) as { args?: unknown });
-		} catch {
+			args = await readArgs(request, maxBodyBytes);
+		} catch (error) {
+			if (error === TOO_LARGE) {
+				return json({ ok: false, error: 'Server function body too large.' }, 413);
+			}
+
 			return json({ ok: false, error: 'Malformed server function call.' }, 400);
 		}
 
 		if (!Array.isArray(args)) {
 			return json({ ok: false, error: 'Malformed server function call.' }, 400);
 		}
-
-		const entry = functions[pathname.slice(prefix.length)];
-
-		if (entry === undefined) return unknownFunction();
 
 		const module = await entry.load();
 		const fn = module[entry.name];
@@ -231,15 +281,67 @@ export function createServerFnDispatch(
 
 			return json({ ok: true, result });
 		} catch (error) {
-			return json(
-				{
-					ok: false,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				500
-			);
+			// Only an error the app explicitly marks public reaches the client; a
+			// bare throw is logged and answered generically, so a DB message or a
+			// file path never leaks over the wire.
+			if (error instanceof ServerFnError) {
+				return json({ ok: false, error: error.message }, error.status);
+			}
+
+			// eslint-disable-next-line no-console
+			console.error(`[riproute] server function ${hash} failed\n`, error);
+
+			return json({ ok: false, error: 'Server function failed.' }, 500);
 		}
 	};
+}
+
+const TOO_LARGE = Symbol('riproute.bodyTooLarge');
+
+/**
+ * Reads and parses the `{ args }` body, refusing anything past `limit` bytes.
+ *
+ * The whole point of the byte cap: `request.json()` would buffer an
+ * arbitrarily large body into memory first. This streams and aborts the moment
+ * the limit is crossed.
+ */
+async function readArgs(request: Request, limit: number): Promise<unknown> {
+	if (request.body === null) return undefined;
+
+	const reader = request.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+
+			if (done) break;
+
+			size += value.byteLength;
+
+			if (size > limit) {
+				await reader.cancel();
+				throw TOO_LARGE;
+			}
+
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+
+	if (size === 0) return undefined;
+
+	const body = new Uint8Array(size);
+	let offset = 0;
+
+	for (const chunk of chunks) {
+		body.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+
+	return (JSON.parse(new TextDecoder().decode(body)) as { args?: unknown }).args;
 }
 
 function unknownFunction(): Response {

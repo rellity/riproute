@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import type { Plugin, ViteDevServer } from 'vite';
 
-import { isRiprouteSource, normalizeId } from './package-root';
+import { isClientEnvironment, isRiprouteSource, normalizeId } from './package-root';
 import { collectServerFnExportsFromFile, isServerFnFile } from './server-fn';
 
 /**
@@ -330,7 +330,7 @@ export function serverGuardPlugin(options: ServerOnlyOptions = {}): Plugin {
 		enforce: 'pre',
 		// The server bundle is allowed to import all of this — that is the point
 		// of it. Only the browser graph is policed.
-		applyToEnvironment: (environment) => environment.name === 'client',
+		applyToEnvironment: (environment) => isClientEnvironment(environment),
 
 		configResolved(config) {
 			root = config.root;
@@ -341,7 +341,7 @@ export function serverGuardPlugin(options: ServerOnlyOptions = {}): Plugin {
 		},
 
 		async resolveId(specifier, importer) {
-			if (importer === undefined || this.environment?.name !== 'client') return null;
+			if (importer === undefined || !isClientEnvironment(this.environment)) return null;
 
 			let reason = classifySpecifier(specifier);
 			let target = specifier;
@@ -395,7 +395,7 @@ export function serverGuardPlugin(options: ServerOnlyOptions = {}): Plugin {
 		 * that pulled it in exists — and the chain names it.
 		 */
 		transform(code, id) {
-			if (this.environment?.name !== 'client') return null;
+			if (!isClientEnvironment(this.environment)) return null;
 
 			const file = cleanUrl(id);
 

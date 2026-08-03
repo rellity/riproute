@@ -73,6 +73,10 @@ export function serveStatic(
 		// the shell would win over every route.
 		if (pathname === '/' || pathname.endsWith('/index.html')) return undefined;
 
+		// Dotfiles are never assets: `.env`, `.git/config`, `.htpasswd` and the
+		// like have no business being served just because they sit under root.
+		if (pathname.split('/').some((segment) => segment.startsWith('.'))) return undefined;
+
 		const file = path.join(root, pathname);
 
 		// `path.join` normalises `..`, so this catches traversal after the fact.
@@ -102,16 +106,27 @@ export function serveStatic(
 
 		if (!stats.isFile()) return undefined;
 
+		const contentType = MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
 		const etag = `W/"${stats.size.toString(16)}-${stats.mtimeMs.toString(16)}"`;
 		const headers = new Headers({
-			'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
+			'content-type': contentType,
 			'content-length': String(stats.size),
 			'cache-control': immutable.some((prefix) => pathname.startsWith(prefix))
 				? IMMUTABLE
 				: cacheControl,
 			etag,
 			'last-modified': stats.mtime.toUTCString(),
+			// Serve the declared type, never a browser-sniffed one — otherwise a
+			// `.txt`/`octet-stream` upload can be re-interpreted as HTML and run.
+			'x-content-type-options': 'nosniff',
 		});
+
+		// An SVG is an active document: viewed top-level it can run script in this
+		// origin. `sandbox` neutralizes that on direct navigation and does not
+		// affect its use as an `<img>`/CSS image, where script never runs anyway.
+		if (contentType === 'image/svg+xml') {
+			headers.set('content-security-policy', 'sandbox');
+		}
 
 		if (request.headers.get('if-none-match') === etag) {
 			return new Response(null, { status: 304, headers });

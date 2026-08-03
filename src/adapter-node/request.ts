@@ -9,6 +9,14 @@ export type RequestOptions = {
 	 * and the URL decides which route runs.
 	 */
 	trustProxy?: boolean;
+	/**
+	 * Host names to accept. When set, a request whose resolved host is not in
+	 * the list is refused with a 400 instead of having its (attacker-controlled)
+	 * `Host` become the request URL's origin — which downstream absolute-URL
+	 * building (redirects, reset links, canonical tags) would otherwise inherit.
+	 * Unset (default) accepts any host, matching the usual framework behaviour.
+	 */
+	allowedHosts?: string[];
 };
 
 /** Converts a Node request into the `Request` the handler expects. */
@@ -30,6 +38,12 @@ export function toWebRequest(req: IncomingMessage, options: RequestOptions = {})
 		(forwarded ? first(headers.get('x-forwarded-host')) : null) ??
 		headers.get('host') ??
 		'localhost';
+
+	if (options.allowedHosts !== undefined && !options.allowedHosts.includes(host)) {
+		// The middleware turns this into a 400 — the same path a malformed host
+		// takes — rather than serving a request under a forged origin.
+		throw new Error(`[riproute] Refused Host header: ${host}`);
+	}
 
 	const url = new URL(req.url ?? '/', `${protocol}://${host}`);
 	const method = (req.method ?? 'GET').toUpperCase();

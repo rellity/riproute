@@ -39,3 +39,19 @@ const SOURCE_ROOT = `${PACKAGE_ROOT}/src/`;
 export function isRiprouteSource(file: string): boolean {
 	return normalizeId(path.resolve(file)).startsWith(SOURCE_ROOT);
 }
+
+/**
+ * Whether a Vite environment is a browser build.
+ *
+ * The single source of truth for "is this the client graph?", shared by the
+ * server-import guard and the server-fn swap so the two can never disagree —
+ * a divergence there is what would let the guard permit a `*.server.ts` import
+ * that the swap then declines to replace, bundling the real module. Keyed on
+ * `consumer`, which is Vite's own semantic for a browser-consumed build,
+ * rather than the environment's name, which a custom setup may rename.
+ */
+export function isClientEnvironment(
+	environment: { config?: { consumer?: string } } | undefined
+): boolean {
+	return environment?.config?.consumer === 'client';
+}

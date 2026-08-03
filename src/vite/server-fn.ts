@@ -5,7 +5,7 @@ import path from 'node:path';
 import { parse } from 'ripple/compiler';
 import type { Plugin } from 'vite';
 
-import { normalizeId } from './package-root';
+import { isClientEnvironment, normalizeId } from './package-root';
 
 /**
  * The bundler half of server functions.
@@ -222,7 +222,7 @@ export function serverFnClientPlugin(): Plugin {
 		},
 
 		async load(id) {
-			if (this.environment?.config.consumer !== 'client') return null;
+			if (!isClientEnvironment(this.environment)) return null;
 
 			const file = id.split('?')[0];
 
