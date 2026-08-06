@@ -80,11 +80,10 @@ importers:
         version: 5.9.3
 
   packages/bun:
-    dependencies:
+    devDependencies:
       '@riproute/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-    devDependencies:
       tsdown:
         specifier: ^0.15.1
         version: 0.15.12(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(typescript@5.9.3)
@@ -93,11 +92,10 @@ importers:
         version: 5.9.3
 
   packages/cloudflare:
-    dependencies:
+    devDependencies:
       '@riproute/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-    devDependencies:
       tsdown:
         specifier: ^0.15.1
         version: 0.15.12(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(typescript@5.9.3)
@@ -106,11 +104,10 @@ importers:
         version: 5.9.3
 
   packages/node:
-    dependencies:
+    devDependencies:
       '@riproute/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-    devDependencies:
       tsdown:
         specifier: ^0.15.1
         version: 0.15.12(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(typescript@5.9.3)
@@ -120,9 +117,6 @@ importers:
 
   packages/riproute:
     dependencies:
-      '@riproute/adapter-kit':
-        specifier: workspace:*
-        version: link:../adapter-kit
       '@riproute/router':
         specifier: workspace:*
         version: link:../router
@@ -132,22 +126,22 @@ importers:
 
   packages/router:
     dependencies:
-      '@riproute/adapter-kit':
-        specifier: workspace:*
-        version: link:../adapter-kit
       ripple:
         specifier: ^0.3.118
         version: 0.3.118
 
   packages/vite:
     dependencies:
-      '@riproute/adapter-kit':
-        specifier: workspace:*
-        version: link:../adapter-kit
       ripple:
         specifier: ^0.3.118
         version: 0.3.118
     devDependencies:
+      '@riproute/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
+      '@riproute/router':
+        specifier: workspace:*
+        version: link:../router
       tsdown:
         specifier: ^0.15.1
         version: 0.15.12(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(typescript@5.9.3)

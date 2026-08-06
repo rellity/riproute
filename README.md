@@ -1,7 +1,7 @@
 # riproute
 
 A server-rendered router for [Ripple](https://ripple-ts.com), shipped as a Vite
-plugin with its own SSR flow and its own `node:http` adapter.
+plugin with its own SSR flow and an adapter per deployment target.
 
 It gives you file-based routing, an SSR dev server, hydration, and a production
 build that boots with `node dist/server`. There is no `ripple.config.ts` and no
@@ -12,11 +12,11 @@ plugin.
 ```ts
 // vite.config.ts
 import { ripple } from '@ripple-ts/vite-plugin';
-import { riproute } from 'riproute/vite';
+import { riproute } from '@riproute/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-	plugins: [riproute(), ripple()],
+	plugins: [ripple(), riproute()],
 });
 ```
 
@@ -33,7 +33,7 @@ src/routes/
 ```tsrx
 // src/routes/__root.tsrx
 import type { Children } from 'ripple';
-import { Link, Outlet } from 'riproute';
+import { Link, Outlet } from '@riproute/router';
 
 // The base document. `shell` replaces index.html — `{props.children}` is where
 // the app goes, no id="root" div needed. Server-only: the browser hydrates the
@@ -70,31 +70,49 @@ instead.
 
 ## Packages
 
-| Package                 | What it is                                                |
-| ----------------------- | --------------------------------------------------------- |
-| `@riproute/riproute`    | the framework: SSR handler, server functions, server-only |
-| `@riproute/router`      | client routing: components, hooks, primitives             |
-| `@riproute/vite`        | the Vite plugin: file routing, SSR, builds                |
-| `@riproute/adapter-kit` | the adapter contract, shared by every target              |
-| `@riproute/node`        | `node:http` adapter                                       |
-| `@riproute/bun`         | `Bun.serve` adapter                                       |
-| `@riproute/cloudflare`  | Cloudflare Workers adapter                                |
+| Package                | What it is                                                |
+| ---------------------- | --------------------------------------------------------- |
+| `@riproute/riproute`   | the framework: SSR handler, server functions, server-only |
+| `@riproute/router`     | client routing: components, hooks, primitives             |
+| `@riproute/vite`       | the Vite plugin: file routing, SSR, builds                |
+| `@riproute/node`       | `node:http` adapter                                       |
+| `@riproute/bun`        | `Bun.serve` adapter                                       |
+| `@riproute/cloudflare` | Cloudflare Workers adapter                                |
 
 `@riproute/riproute` re-exports `@riproute/router`, so an app has one import for
 routing and one for the server halves.
 
+There is a seventh package in the repository, `@riproute/adapter-kit` — the
+contract an adapter implements. It is never released: every package that uses it
+bundles it at build time, so the contract stays an internal detail instead of a
+version an app has to keep in step with its adapter.
+
 ## Install
 
-riproute is not published to npm. Install it from GitHub, alongside Ripple and
-Ripple's Vite plugin:
+riproute is not published to npm. Releases attach a tarball per package, and
+those are installed by URL — no registry account and no GitHub token, because
+release assets on a public repository download anonymously:
 
 ```sh
-npm install github:rellity/riproute ripple
+R=https://github.com/rellity/riproute/releases/download/v0.1.0
+
+npm install $R/riproute-riproute-0.1.0.tgz \
+            $R/riproute-vite-0.1.0.tgz \
+            $R/riproute-node-0.1.0.tgz \
+            ripple
 npm install -D @ripple-ts/vite-plugin
 ```
 
-The `prepare` script builds `dist/` on install, so the plugin and the adapter
-are ready to use straight from a clone.
+Swap `riproute-node` for `riproute-bun` or `riproute-cloudflare` to target those
+instead — the installed adapter is what picks the target, see
+[Adapters](#adapters). `@riproute/router` arrives on its own: each tarball's
+intra-repo dependencies point at its siblings in the same release, so the graph
+resolves from the release alone. pnpm and yarn take the same URLs.
+
+`git clone` + `pnpm install` also works and is what you want for hacking on
+riproute itself — see [Development](#development). What does _not_ work is
+`npm install github:rellity/riproute`: this repository is a workspace whose root
+is private, so that command installs nothing importable.
 
 Do not add a `ripple.config.ts`. riproute never reads one, but its presence
 switches `@ripple-ts/vite-plugin` into metaframework mode, where it registers an
@@ -125,7 +143,7 @@ regenerates the table and reloads the page.
 Dynamic routes get their params typed from the pattern:
 
 ```tsrx
-import type { RouteComponentProps } from 'riproute';
+import type { RouteComponentProps } from '@riproute/router';
 
 export default function Post(props: RouteComponentProps<'/posts/:slug'>) @{
 	// props.params.slug: string — and only slug; a typo is a type error.
@@ -153,7 +171,7 @@ riproute({ routes: 'src/routes.ts' });
 
 ```ts
 // src/routes.ts
-import { defineRoutes } from 'riproute';
+import { defineRoutes } from '@riproute/router';
 import Home from './pages/home.tsrx';
 import RootLayout from './pages/layout.tsrx';
 
@@ -180,13 +198,16 @@ import {
 	useParams,
 	useRouter,
 	useSearchParams,
-} from 'riproute';
+} from '@riproute/router';
 ```
 
-`riproute/server` exports `createHandler()`, a `Request` → `Response` SSR
-handler with no Node dependency. `riproute/adapter-node` bridges it onto
-`node:http`, with `serveStatic()`, proxy-header handling, `set-cookie`
-splitting, backpressure and graceful shutdown.
+`@riproute/riproute` re-exports all of that, so `from '@riproute/riproute'` works
+too if you would rather have one import for both halves.
+
+`@riproute/riproute/server` exports `createHandler()`, a `Request` → `Response`
+SSR handler with no Node dependency. The adapter packages bridge it onto a
+runtime: `@riproute/node` adds `serveStatic()`, proxy-header handling,
+`set-cookie` splitting, backpressure and graceful shutdown.
 
 ## Titles
 
@@ -232,7 +253,7 @@ fails the build naming the import chain rather than shipping it.
 Mark a module explicitly, the way React's `server-only` package works:
 
 ```ts
-import 'riproute/server-only';
+import '@riproute/riproute/server-only';
 
 export const db = connect(process.env.DATABASE_URL);
 ```
@@ -278,8 +299,8 @@ the client bundle:
 
 ```ts
 // src/lib/todos.server.ts
-import { serverFn, getRequestEvent, ServerFnError } from 'riproute/server';
-import type { ServerFnMiddleware } from 'riproute/server';
+import { serverFn, getRequestEvent, ServerFnError } from '@riproute/riproute/server';
+import type { ServerFnMiddleware } from '@riproute/riproute/server';
 
 const requireUser: ServerFnMiddleware = async (event, next) => {
 	const user = await sessionUser(event.request); // cookies, headers
@@ -309,7 +330,7 @@ TanStack Query style: `useQueryFn()` loads on mount, `useMutateFn()` fires
 when told to. Both destructure without losing reactivity:
 
 ```tsrx
-import { useMutateFn, useQueryFn } from 'riproute';
+import { useMutateFn, useQueryFn } from '@riproute/router';
 import { createTodo, listTodos } from '../lib/todos.server';
 
 export default function Todos() @{
@@ -489,7 +510,8 @@ surfaces when the server entry is actually built.
 Adding a target is a package, never a change to the plugin. An adapter exports
 a descriptor built with `defineAdapter()` from `@riproute/adapter-kit` — a
 name, the runtime package its entry imports, any Vite config the runtime needs,
-and a function returning the source of the server entry.
+and a function returning the source of the server entry. The kit is bundled into
+each adapter at build time, so an app installs the adapter and nothing else.
 
 `@riproute/node` and `@riproute/bun` build the same complete server for their
 runtime, with the same compression, graceful shutdown, proxy-trust and static
@@ -628,19 +650,34 @@ router assigns `document.title` directly.
 
 ## Development
 
+A pnpm workspace, driven by turbo:
+
 ```sh
-npm install
-npm test              # unit, SSR, jsdom-client and Vite-build projects
-npm run test:coverage # the same, with a V8 coverage report
-npm run test:e2e      # dev server and production build, in a real browser
-npm run build         # dist/vite and dist/adapter-node
+pnpm install
+pnpm build            # every package's dist/, in dependency order
+pnpm test             # unit, SSR, jsdom-client and Vite-build projects
+pnpm test:e2e         # dev server and production build, in a real browser
+pnpm format:check     # prettier
 ```
+
+Cutting a release is a tag. `.github/workflows/release.yml` builds, tests, packs
+each package with its intra-repo dependencies rewritten to the release URLs, and
+attaches the tarballs:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+`node scripts/pack-release.mjs --tag v0.1.0 --out dist-release` does the packing
+half locally if you want to inspect what a release would contain. It refuses a
+tag that disagrees with the packages' `version`, since the URLs come from the tag
+and the filenames from the version — a mismatch would publish dead links.
 
 Coverage reads low on the dev middleware and the generated-module templates —
 those run inside real Vite processes during `test:e2e`, which V8 coverage
 cannot see. The browser suite is the test of record for them.
 
-`npm run test:e2e` boots the app in `example/` twice — once under `vite`, once
+`pnpm test:e2e` boots the app in `examples/basic` twice — once under `vite`, once
 from `dist/server` — and asserts, in Chromium, that hydration adopted the server
 markup, that the counter increments, that navigation does not reload the page,
 and that each route's `<title>` is right and singular. Unit tests cannot see any

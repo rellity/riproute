@@ -26,11 +26,9 @@
 	"files": [
 		"dist"
 	],
-	"dependencies": {
-		"@riproute/adapter-kit": "workspace:*"
-	},
 	"devDependencies": {
 		"tsdown": "^0.15.1",
-		"typescript": "^5.9.2"
+		"typescript": "^5.9.2",
+		"@riproute/adapter-kit": "workspace:*"
 	}
 }

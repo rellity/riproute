@@ -30,8 +30,7 @@
 		"types"
 	],
 	"dependencies": {
-		"@riproute/router": "workspace:*",
-		"@riproute/adapter-kit": "workspace:*"
+		"@riproute/router": "workspace:*"
 	},
 	"peerDependencies": {
 		"ripple": "^0.3.118"

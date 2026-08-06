@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import type { Plugin, ResolvedConfig, ViteBuilder } from 'vite';
 
-import { SERVER_FN_PREFIX } from '@riproute/adapter-kit';
+import { SERVER_FN_PREFIX } from '@riproute/router/primitives';
 import {
 	collectDevCssIds,
 	installDevMiddleware,

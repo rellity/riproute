@@ -6,7 +6,6 @@ export default defineConfig({
 	format: 'esm',
 	platform: 'node',
 	target: 'node20',
-	dts: true,
+	dts: { resolve: [/^@riproute\//] },
 	clean: true,
-	external: ['@riproute/adapter-kit'],
 });

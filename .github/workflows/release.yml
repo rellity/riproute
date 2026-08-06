@@ -1,0 +1,48 @@
+name: Release
+
+# riproute is not on npm, so a release is how it is distributed: each package is
+# packed into a tarball and attached here, with its intra-repo dependencies
+# rewritten to point at the sibling tarballs in the same release. Assets on a
+# public repository download anonymously, so `npm i <url>` needs no token.
+on:
+    push:
+        tags: ['v*']
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: 'Tag to build the download URLs from (e.g. v0.1.0)'
+                required: true
+
+permissions:
+    contents: write
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: pnpm
+
+            - run: pnpm install --frozen-lockfile
+
+            # A release that cannot pass its own suite is not a release.
+            - run: pnpm build
+            - run: pnpm test
+
+            - name: Pack the release tarballs
+              run: node scripts/pack-release.mjs --tag "$TAG" --out dist-release
+              env:
+                  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+            - name: Publish the release
+              run: gh release create "$TAG" dist-release/*.tgz --title "$TAG" --generate-notes
+              env:
+                  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+                  GH_TOKEN: ${{ github.token }}

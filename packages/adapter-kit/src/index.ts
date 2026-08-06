@@ -12,16 +12,11 @@
  * the adapters: it discovers whichever `@riproute/*` adapter the app installed,
  * imports its descriptor, and asks it for an entry. Adding a target is a new
  * package, not a new branch in the plugin.
- */
-
-/**
- * The endpoint server-function calls go through.
  *
- * Lives here because it is the wire protocol: the client stub, the server
- * dispatch and the dev middleware must all agree on it, and this is the one
- * package all three can import from as built JavaScript.
+ * This package is never released. Every package that uses it bundles it at
+ * build time, so an app installs adapters and a plugin, not a kit — and the
+ * contract stays an internal detail rather than a version an app has to match.
  */
-export const SERVER_FN_PREFIX = '/__riproute/serverfn/';
 
 export type AdapterEntryContext = {
 	/** `<script>`/`<link>` tags for the built client, already escaped. */

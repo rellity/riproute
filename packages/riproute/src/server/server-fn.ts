@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import { SERVER_FN_PREFIX } from '@riproute/adapter-kit';
+import { SERVER_FN_PREFIX } from '@riproute/router/primitives';
 
 /**
  * Server functions.

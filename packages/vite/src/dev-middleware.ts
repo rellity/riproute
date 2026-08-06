@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 
 import type { ViteDevServer } from 'vite';
 
-import { SERVER_FN_PREFIX } from '@riproute/adapter-kit';
+import { SERVER_FN_PREFIX } from '@riproute/router/primitives';
 import type { ResolvedRiprouteOptions } from './options';
 import { HANDLER_ID, devUrl, CLIENT_ID, resolvedId } from './virtual-modules';
 

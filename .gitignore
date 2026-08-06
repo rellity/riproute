@@ -6,3 +6,4 @@ dist/
 .turbo/
 examples/*/dist/
 coverage/
+dist-release/

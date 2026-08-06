@@ -29,5 +29,6 @@
 	"devDependencies": {
 		"tsdown": "^0.15.1",
 		"typescript": "^5.9.2"
-	}
+	},
+	"private": true
 }

@@ -27,8 +27,5 @@
 	],
 	"peerDependencies": {
 		"ripple": "^0.3.118"
-	},
-	"dependencies": {
-		"@riproute/adapter-kit": "workspace:*"
 	}
 }

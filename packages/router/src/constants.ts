@@ -16,6 +16,12 @@ export const LOCATION_PARAM = '__ripple_router_location';
  */
 export const SPLAT_PARAM = '__ripple_router_rest';
 
-// The wire protocol lives in the adapter kit: the client stub here, the
-// server dispatch and the dev middleware all have to agree on it.
-export { SERVER_FN_PREFIX } from '@riproute/adapter-kit';
+/**
+ * The endpoint server-function calls go through.
+ *
+ * This is the wire protocol: the client stub here, the server dispatch and the
+ * dev middleware all have to agree on it. It lives in this package because
+ * this is the lowest one all three can reach — the built packages inline it at
+ * build time, and the source-shipped ones import it as ordinary source.
+ */
+export const SERVER_FN_PREFIX = '/__riproute/serverfn/';
