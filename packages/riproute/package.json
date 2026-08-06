@@ -1,0 +1,39 @@
+{
+	"name": "@riproute/riproute",
+	"version": "0.1.0",
+	"description": "The riproute framework: SSR handler, server functions and the server-only guard",
+	"license": "MIT",
+	"type": "module",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts",
+			"default": "./src/index.ts"
+		},
+		"./server": {
+			"types": "./types/server.d.ts",
+			"import": "./src/server/index.ts",
+			"default": "./src/server/index.ts"
+		},
+		"./server-only": {
+			"types": "./types/server-only.d.ts",
+			"import": "./src/server-only.ts",
+			"default": "./src/server-only.ts"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"src",
+		"types"
+	],
+	"dependencies": {
+		"@riproute/router": "workspace:*",
+		"@riproute/adapter-kit": "workspace:*"
+	},
+	"peerDependencies": {
+		"ripple": "^0.3.118"
+	}
+}

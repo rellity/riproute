@@ -1,8 +1,8 @@
 import { render } from 'ripple/server';
 import { describe, expect, it } from 'vitest';
 
-import { Outlet, Router, defineRoutes } from '../../src/index';
-import type { RouteComponentProps } from '../../src/index';
+import { Outlet, Router, defineRoutes } from '../../packages/router/src/index';
+import type { RouteComponentProps } from '../../packages/router/src/index';
 
 function Home() @{
 	<h1>{'Home'}</h1>

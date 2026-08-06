@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { runChecks } from './checks.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const example = path.join(root, 'example');
+const example = path.join(root, 'examples', 'basic');
 
 const DEV_PORT = 5199;
 const PROD_PORT = 5198;
@@ -62,11 +62,17 @@ async function stop(child) {
 
 const failures = [];
 
-await run('node', [path.join(root, 'node_modules/.bin/tsdown')], root);
+await run(
+	path.join(root, 'node_modules/.bin/turbo'),
+	['run', 'build', '--filter=!@riproute/example-basic'],
+	root
+);
 
+// Executed directly rather than through `node`: pnpm's `.bin` entries are
+// shell wrappers, not JavaScript.
 const dev = await start(
-	'node',
-	[path.join(example, 'node_modules/.bin/vite'), '--port', String(DEV_PORT), '--strictPort'],
+	path.join(root, 'node_modules/.bin/vite'),
+	['--port', String(DEV_PORT), '--strictPort'],
 	example,
 	DEV_PORT
 );
@@ -77,7 +83,7 @@ try {
 	await stop(dev);
 }
 
-await run(path.join(example, 'node_modules/.bin/vite'), ['build'], example);
+await run(path.join(root, 'node_modules/.bin/vite'), ['build'], example);
 
 const prod = await start('node', ['dist/server/index.js'], example, PROD_PORT, {
 	PORT: String(PROD_PORT),

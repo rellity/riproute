@@ -1,14 +1,14 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { PACKAGE_ROOT } from '../../src/vite/package-root';
+import { PACKAGE_ROOT } from '../../packages/vite/src/package-root';
 import {
 	analyzeServerOnly,
 	classifySpecifier,
 	isServerOnlyPath,
 	matchGlob,
 	mightBeServerPath,
-} from '../../src/vite/server-guard';
+} from '../../packages/vite/src/server-guard';
 
 const ROOT = '/app';
 const at = (...parts: string[]) => path.join(ROOT, ...parts);
@@ -22,14 +22,14 @@ describe('classifySpecifier', () => {
 	});
 
 	it("recognises riproute's server entries", () => {
-		expect(classifySpecifier('riproute/server')).toBe('entry');
-		expect(classifySpecifier('riproute/adapter-node')).toBe('entry');
-		expect(classifySpecifier('riproute/server-only')).toBe('entry');
+		expect(classifySpecifier('@riproute/riproute/server')).toBe('entry');
+		expect(classifySpecifier('@riproute/node')).toBe('entry');
+		expect(classifySpecifier('@riproute/riproute/server-only')).toBe('entry');
 	});
 
 	it('leaves ordinary imports alone', () => {
 		expect(classifySpecifier('riproute')).toBeNull();
-		expect(classifySpecifier('riproute/vite')).toBeNull();
+		expect(classifySpecifier('@riproute/vite')).toBeNull();
 		expect(classifySpecifier('./thing')).toBeNull();
 		expect(classifySpecifier('lodash-es')).toBeNull();
 	});

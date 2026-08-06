@@ -1,8 +1,8 @@
 import { flushSync, track } from 'ripple';
 import { describe, expect, it, vi } from 'vitest';
 
-import { Link, Outlet, Redirect, Router, defineRoutes, navigateTo } from '../../src/index';
-import type { RouteComponentProps } from '../../src/index';
+import { Link, Outlet, Redirect, Router, defineRoutes, navigateTo } from '../../packages/router/src/index';
+import type { RouteComponentProps } from '../../packages/router/src/index';
 
 function Home() @{
 	<h1>{'Home'}</h1>

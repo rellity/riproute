@@ -1,9 +1,9 @@
 import type { Children, Component } from 'ripple';
 import { describe, expect, it } from 'vitest';
 
-import { defineRoutes } from '../../src/index';
-import { createHandler } from '../../src/server/index';
-import { renderShell } from '../../src/server/render-shell.tsrx';
+import { defineRoutes } from '../../packages/router/src/index';
+import { createHandler } from '../../packages/riproute/src/server/index';
+import { renderShell } from '../../packages/riproute/src/server/render-shell.tsrx';
 
 function Shell(props: { children?: Children }) @{
 	<>

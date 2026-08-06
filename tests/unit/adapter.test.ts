@@ -12,7 +12,7 @@ import {
 	sendWebResponse,
 	serveStatic,
 	toWebRequest,
-} from '../../src/adapter-node/index';
+} from '../../packages/node/src/index';
 
 /** A minimal stand-in for `IncomingMessage`. */
 function fakeRequest(

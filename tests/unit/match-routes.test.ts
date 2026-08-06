@@ -6,7 +6,7 @@ import {
 	isPathActive,
 	matchCompiledRoutePath,
 	matchRoutes,
-} from '../../src/utils/match-routes';
+} from '../../packages/router/src/utils/match-routes';
 import {
 	buildHref,
 	isExternalUrl,
@@ -15,7 +15,7 @@ import {
 	parseLocation,
 	stripBase,
 	withBase,
-} from '../../src/utils/location';
+} from '../../packages/router/src/utils/location';
 
 const noop = (() => {}) as Component;
 

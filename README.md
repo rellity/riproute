@@ -68,6 +68,21 @@ Prefer a static shell? Skip the `shell` export and put an `index.html` with a
 `<div id="root"></div>` next to `vite.config.ts` — riproute renders into that
 instead.
 
+## Packages
+
+| Package                 | What it is                                                |
+| ----------------------- | --------------------------------------------------------- |
+| `@riproute/riproute`    | the framework: SSR handler, server functions, server-only |
+| `@riproute/router`      | client routing: components, hooks, primitives             |
+| `@riproute/vite`        | the Vite plugin: file routing, SSR, builds                |
+| `@riproute/adapter-kit` | the adapter contract, shared by every target              |
+| `@riproute/node`        | `node:http` adapter                                       |
+| `@riproute/bun`         | `Bun.serve` adapter                                       |
+| `@riproute/cloudflare`  | Cloudflare Workers adapter                                |
+
+`@riproute/riproute` re-exports `@riproute/router`, so an app has one import for
+routing and one for the server halves.
+
 ## Install
 
 riproute is not published to npm. Install it from GitHub, alongside Ripple and
@@ -455,28 +470,33 @@ process.
 
 ### Adapters
 
-The production target is one option:
+The target is a dependency, not an option:
 
-```ts
-riproute({ adapter: 'node' }); //    default
-riproute({ adapter: 'bun' }); //     run with `bun dist/server`
-riproute({ adapter: 'workerd' }); // Cloudflare Workers, below
-riproute({ adapter: 'nitro' }); //   hand off to nitro, below
-```
+| Install                | Build output                    | Start              |
+| ---------------------- | ------------------------------- | ------------------ |
+| `@riproute/node`       | `dist/server/index.js`          | `node dist/server` |
+| `@riproute/bun`        | `dist/server/index.js`          | `bun dist/server`  |
+| `@riproute/cloudflare` | a Worker module                 | `wrangler deploy`  |
+| `nitro()` in `plugins` | `.output/` for any nitro preset | preset-dependent   |
 
-`'node'` and `'bun'` build the same `dist/server/index.js` — a complete server
-for that runtime, with the same compression, graceful shutdown, proxy-trust,
-static hardening and `RIPROUTE_NO_LISTEN` behaviour. Bun's is thinner because
-`Bun.serve` speaks web standards directly. The build bundles **only** the
-chosen adapter: a Bun build carries no `node:http`, a node build no
-`Bun.serve`, and the shared static/compression code is the one hardened copy.
+The plugin reads the app's `package.json`, finds the one `@riproute/*` adapter
+it declares, and asks that package for the server entry — so exactly one has to
+be installed. Zero is an error (nothing to build), and so is more than one
+(nothing to guess). A client-only build needs no adapter at all: the error only
+surfaces when the server entry is actually built.
 
-Both `createServer` functions take the same options — `trustProxy`,
-`allowedHosts`, `compress`, `gracefulShutdown`, `shutdownTimeout`, `onError`,
-plus `maxBodyBytes` and `idleTimeout` on Bun. The generated entry uses the
-defaults; to set your own, import its `handler` with `RIPROUTE_NO_LISTEN=1`
-and wrap it in `createServer(handler, { … })` from `riproute/adapter-node` or
-`riproute/adapter-bun`.
+Adding a target is a package, never a change to the plugin. An adapter exports
+a descriptor built with `defineAdapter()` from `@riproute/adapter-kit` — a
+name, the runtime package its entry imports, any Vite config the runtime needs,
+and a function returning the source of the server entry.
+
+`@riproute/node` and `@riproute/bun` build the same complete server for their
+runtime, with the same compression, graceful shutdown, proxy-trust and static
+hardening; Bun's is thinner because `Bun.serve` speaks web standards directly.
+Both `createServer` functions take `trustProxy`, `allowedHosts`, `compress`,
+`gracefulShutdown`, `shutdownTimeout`, `onError`, plus `maxBodyBytes` and
+`idleTimeout` on Bun. The generated entry uses the defaults; to set your own,
+import its `handler` with `RIPROUTE_NO_LISTEN=1` and wrap it yourself.
 
 `allowedHosts` is worth setting behind a proxy: without it the request URL's
 origin comes from the client's `Host` header, and anything the app builds from

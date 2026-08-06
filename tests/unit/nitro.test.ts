@@ -6,13 +6,12 @@ import {
 	hasResolvedNitroPlugin,
 	nitroBeforeRiproute,
 	resolveAdapter,
-} from '../../src/vite/nitro';
-import { resolveOptions } from '../../src/vite/options';
-import {
-	generateNitroModule,
-	generateServerModule,
-	generateWorkerdModule,
-} from '../../src/vite/virtual-modules';
+} from '../../packages/vite/src/nitro';
+import { resolveOptions } from '../../packages/vite/src/options';
+import { generateNitroModule } from '../../packages/vite/src/virtual-modules';
+import bunAdapter from '../../packages/bun/src/adapter';
+import cloudflareAdapter from '../../packages/cloudflare/src/adapter';
+import nodeAdapter from '../../packages/node/src/adapter';
 
 const nitroish = (name: string) => ({ name });
 
@@ -89,7 +88,7 @@ describe('generateNitroModule', () => {
 		expect(code).toContain('index-abc.js');
 		expect(code).toContain('<!doctype html>');
 		expect(code).not.toContain('node:fs');
-		expect(code).not.toContain('riproute/adapter-node');
+		expect(code).not.toContain('@riproute/node');
 	});
 
 	it('prod: a shell-less app with no template fails loudly, not with a blank page', () => {
@@ -104,51 +103,63 @@ describe('generateNitroModule', () => {
 	});
 });
 
-describe('resolveAdapter', () => {
-	it('defaults to node, and to nitro when the plugin is present', () => {
-		expect(resolveAdapter({}, [nitroish('riproute')])).toBe('node');
-		expect(resolveAdapter({}, [nitroish('riproute'), nitroish('nitro:main')])).toBe('nitro');
+const entryContext = {
+	tags: '<script src="/assets/index-abc.js"></script>',
+	template: '<!doctype html><html><head></head><body></body></html>',
+	templatePath: '/app/index.html',
+	clientDirFromServer: '../client',
+	assetsDir: 'assets',
+	base: '',
+	handlerId: 'virtual:riproute/handler',
+};
+
+describe('adapter descriptors', () => {
+	it('each imports only its own runtime package', () => {
+		const node = nodeAdapter.entry(entryContext);
+		const bun = bunAdapter.entry(entryContext);
+		const cloudflare = cloudflareAdapter.entry(entryContext);
+
+		expect(node).toContain("from '@riproute/node'");
+		expect(node).not.toContain('@riproute/bun');
+		expect(node).not.toContain('@riproute/cloudflare');
+
+		expect(bun).toContain("from '@riproute/bun'");
+		expect(bun).not.toContain('@riproute/node');
+
+		expect(cloudflare).toContain("from '@riproute/cloudflare'");
+		expect(cloudflare).not.toContain('@riproute/node');
 	});
 
-	it('an explicit adapter always wins', () => {
-		expect(resolveAdapter({ adapter: 'bun' }, [nitroish('nitro:main')])).toBe('bun');
-		expect(resolveAdapter({ adapter: 'node' }, [nitroish('nitro:main')])).toBe('node');
-		expect(resolveAdapter({ adapter: 'nitro' }, [])).toBe('nitro');
+	it('the server targets build a complete server; the Worker does not', () => {
+		const node = nodeAdapter.entry(entryContext);
+
+		expect(node).toContain('createServer(handler)');
+		expect(node).toContain('serveStatic(clientDir');
+		expect(node).toContain('RIPROUTE_NO_LISTEN');
+
+		const cloudflare = cloudflareAdapter.entry(entryContext);
+
+		// A Worker has no filesystem, no process and no socket to listen on.
+		expect(cloudflare).toContain('export default { fetch: createFetchHandler(handler) };');
+		expect(cloudflare).not.toContain('node:fs');
+		expect(cloudflare).not.toContain('RIPROUTE_NO_LISTEN');
+		// The template is baked in rather than read at boot.
+		expect(cloudflare).toContain('<!doctype html>');
 	});
 
-	it('honours the legacy nitro boolean as an override', () => {
-		expect(resolveAdapter({ nitro: true }, [])).toBe('nitro');
-		expect(resolveAdapter({ nitro: false }, [nitroish('nitro:main')])).toBe('node');
-	});
-});
-
-describe('hasResolvedNitroPlugin', () => {
-	it('detects the nitro plugin by name in the resolved list', () => {
-		expect(hasResolvedNitroPlugin([nitroish('riproute'), nitroish('nitro:env')])).toBe(true);
-		expect(hasResolvedNitroPlugin([nitroish('riproute'), nitroish('ripple')])).toBe(false);
-	});
-});
-
-describe('generateServerModule adapter selection', () => {
-	const options = resolveOptions({}, path.resolve('/app'));
-
-	it('imports the chosen adapter package, and only that one', () => {
-		const node = generateServerModule(options, '', 'node');
-		const bun = generateServerModule(options, '', 'bun');
-
-		expect(node).toContain("from 'riproute/adapter-node'");
-		expect(node).not.toContain('adapter-bun');
-
-		expect(bun).toContain("from 'riproute/adapter-bun'");
-		expect(bun).not.toContain('adapter-node');
-
-		// Both are otherwise the same complete server entry.
-		expect(bun).toContain('createServer(handler)');
-		expect(bun).toContain('serveStatic(clientDir');
+	it('only the Worker asks for its dependencies to be bundled', () => {
+		expect(cloudflareAdapter.viteConfig?.noExternal).toBe(true);
+		expect(nodeAdapter.viteConfig?.noExternal).toBeUndefined();
+		expect(bunAdapter.viteConfig?.noExternal).toBeUndefined();
 	});
 
-	it('defaults to node', () => {
-		expect(generateServerModule(options, '')).toContain("from 'riproute/adapter-node'");
+	it('names and runtime packages line up', () => {
+		expect([nodeAdapter.name, bunAdapter.name, cloudflareAdapter.name]).toEqual([
+			'node',
+			'bun',
+			'cloudflare',
+		]);
+		expect(cloudflareAdapter.runtimePackage).toBe('@riproute/cloudflare');
 	});
 });
 
@@ -169,39 +180,5 @@ describe('resolveOptions output directories', () => {
 		const options = resolveOptions({}, '/app');
 
 		expect(options.clientDirFromServer).toBe('../client');
-	});
-});
-
-describe('generateWorkerdModule', () => {
-	const options = resolveOptions({}, path.resolve('/app'));
-
-	it('emits a Worker module with no filesystem, server or listen', () => {
-		const code = generateWorkerdModule(options, {
-			tags: '<script src="/assets/index-abc.js"></script>',
-			template: '<!doctype html><html><head></head><body></body></html>',
-		});
-
-		expect(code).toContain("import { createFetchHandler } from 'riproute/adapter-workerd';");
-		expect(code).toContain('export default { fetch: createFetchHandler(handler) };');
-		// A Worker has no filesystem, no process and no socket to listen on.
-		expect(code).not.toContain('node:fs');
-		expect(code).not.toContain('createServer');
-		expect(code).not.toContain('RIPROUTE_NO_LISTEN');
-		// The template is baked in, not read at boot.
-		expect(code).toContain('<!doctype html>');
-		expect(code).toContain('index-abc.js');
-	});
-
-	it('fails loudly when there is no document to render', () => {
-		expect(generateWorkerdModule(options, { tags: '', template: null })).toContain(
-			'No document to render'
-		);
-	});
-});
-
-describe('resolveAdapter with workerd', () => {
-	it('selects workerd when asked, over an auto-detected nitro', () => {
-		expect(resolveAdapter({ adapter: 'workerd' }, [])).toBe('workerd');
-		expect(resolveAdapter({ adapter: 'workerd' }, [nitroish('nitro:main')])).toBe('workerd');
 	});
 });

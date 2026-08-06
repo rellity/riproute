@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeWebRequest } from '../../src/adapter-shared';
+import { normalizeWebRequest } from '../../packages/adapter-kit/src/web';
 
 describe('normalizeWebRequest', () => {
 	const at = (url: string, headers: Record<string, string> = {}) => new Request(url, { headers });

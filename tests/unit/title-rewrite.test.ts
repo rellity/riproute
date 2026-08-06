@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { rewriteTitles } from '../../src/vite/title-rewrite';
+import { rewriteTitles } from '../../packages/vite/src/title-rewrite';
 
-const IMPORT = "import { Title as RiprouteTitle } from 'riproute';";
+const IMPORT = "import { Title as RiprouteTitle } from '@riproute/router';";
 
 /** Wraps markup in a component so the compiler's parser has something to chew on. */
 function component(markup: string): string {
@@ -115,7 +115,7 @@ describe('rewriteTitles', () => {
 		const rewritten = await rewriteTitles(source, '/src/routes/page.tsrx');
 
 		expect(rewritten.startsWith(IMPORT)).toBe(true);
-		expect(rewritten.match(/from 'riproute'/g)).toHaveLength(1);
+		expect(rewritten.match(/from '@riproute\/router'/g)).toHaveLength(1);
 		expect(rewritten.split('\n')).toHaveLength(source.split('\n').length);
 	});
 
@@ -131,14 +131,14 @@ describe('rewriteTitles', () => {
 		const source = `const RiprouteTitle = 1;\n${component("<title>{'x'}</title>")}`;
 		const rewritten = await rewriteTitles(source, '/src/routes/page.tsrx');
 
-		expect(rewritten).toContain("import { Title as RiprouteTitle1 } from 'riproute';");
+		expect(rewritten).toContain("import { Title as RiprouteTitle1 } from '@riproute/router';");
 		expect(rewritten).toContain("<RiprouteTitle1 text={'x'} />");
 	});
 });
 
 describe('titleRewritePlugin load hook', () => {
 	it('rewrites at load time, so plugin order cannot matter', async () => {
-		const { titleRewritePlugin } = await import('../../src/vite/title-rewrite');
+		const { titleRewritePlugin } = await import('../../packages/vite/src/title-rewrite');
 		const fs = await import('node:fs');
 		const os = await import('node:os');
 		const path = await import('node:path');

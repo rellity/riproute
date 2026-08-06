@@ -1,7 +1,7 @@
 import { flushSync } from 'ripple';
 import { describe, expect, it, vi } from 'vitest';
 
-import { useMutateFn, useQueryFn } from '../../src/index';
+import { useMutateFn, useQueryFn } from '../../packages/router/src/index';
 
 type Todo = { id: number; name: string };
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeId } from '../../src/vite/package-root';
-import { tsrxFallbackPlugin } from '../../src/vite/tsrx-fallback';
+import { normalizeId } from '../../packages/vite/src/package-root';
+import { tsrxFallbackPlugin } from '../../packages/vite/src/tsrx-fallback';
 
 const SOURCE = "export function NotFound() @{\n\t<div>{'Not found'}</div>\n}\n";
 

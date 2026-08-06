@@ -1,7 +1,7 @@
 import { flushSync } from 'ripple';
 import { describe, expect, it } from 'vitest';
 
-import { Link } from '../../src/index';
+import { Link } from '../../packages/router/src/index';
 
 /** The anchor whose text is `label`. */
 function anchor(label: string): HTMLAnchorElement {

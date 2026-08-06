@@ -1,69 +1,18 @@
 {
-	"name": "riproute",
-	"version": "0.1.0",
+	"name": "riproute-monorepo",
 	"private": true,
-	"description": "A server-rendered router for Ripple, with its own Vite plugin and Node adapter",
 	"type": "module",
+	"packageManager": "pnpm@9.12.0",
 	"engines": {
 		"node": ">=20.0.0"
 	},
 	"scripts": {
-		"build": "tsdown",
-		"prepare": "tsdown",
-		"test": "vitest run",
-		"test:watch": "vitest",
+		"build": "turbo run build",
+		"test": "turbo run test",
+		"test:e2e": "turbo run test:e2e",
 		"format": "prettier --write .",
-		"format:check": "prettier --check .",
-		"test:e2e": "node tests/e2e/run.mjs",
-		"test:coverage": "vitest run --coverage"
+		"format:check": "prettier --check ."
 	},
-	"exports": {
-		".": {
-			"types": "./types/index.d.ts",
-			"import": "./src/index.ts",
-			"default": "./src/index.ts"
-		},
-		"./vite": {
-			"types": "./dist/vite/index.d.ts",
-			"import": "./dist/vite/index.js",
-			"default": "./dist/vite/index.js"
-		},
-		"./server": {
-			"types": "./types/server.d.ts",
-			"import": "./src/server/index.ts",
-			"default": "./src/server/index.ts"
-		},
-		"./server-only": {
-			"types": "./types/server-only.d.ts",
-			"import": "./src/server-only.ts",
-			"default": "./src/server-only.ts"
-		},
-		"./adapter-node": {
-			"types": "./dist/adapter-node/index.d.ts",
-			"import": "./dist/adapter-node/index.js",
-			"default": "./dist/adapter-node/index.js"
-		},
-		"./adapter-workerd": {
-			"types": "./dist/adapter-workerd/index.d.ts",
-			"import": "./dist/adapter-workerd/index.js",
-			"default": "./dist/adapter-workerd/index.js"
-		},
-		"./adapter-bun": {
-			"types": "./dist/adapter-bun/index.d.ts",
-			"import": "./dist/adapter-bun/index.js",
-			"default": "./dist/adapter-bun/index.js"
-		},
-		"./package.json": "./package.json"
-	},
-	"files": [
-		"src",
-		"dist",
-		"types",
-		"riproute.d.ts",
-		"README.md",
-		"LICENSE"
-	],
-	"license": "MIT",
 	"devDependencies": {
 		"@ripple-ts/vite-plugin": "^0.3.118",
 		"@types/node": "^24.3.0",
@@ -75,11 +24,7 @@
 		"tsdown": "^0.15.6",
 		"typescript": "^5.9.2",
 		"vite": "^7.1.4",
-		"vitest": "^3.2.4"
-	},
-	"peerDependencies": {
-		"@ripple-ts/vite-plugin": "^0.3.118",
-		"ripple": "^0.3.118",
-		"vite": "^6 || ^7 || ^8"
+		"vitest": "^3.2.4",
+		"turbo": "^2.5.8"
 	}
 }

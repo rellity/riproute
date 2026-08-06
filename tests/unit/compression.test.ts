@@ -4,7 +4,7 @@ import {
 	compressStream,
 	negotiateEncoding,
 	shouldCompress,
-} from '../../src/adapter-node/compression';
+} from '../../packages/adapter-kit/src/compression';
 
 describe('negotiateEncoding', () => {
 	it('prefers brotli, falls back to gzip', () => {

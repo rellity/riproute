@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createFetchHandler } from '../../src/adapter-workerd/index';
+import { createFetchHandler } from '../../packages/cloudflare/src/index';
 
 const ok = (body = 'page') =>
 	new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } });

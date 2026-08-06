@@ -1,0 +1,34 @@
+{
+	"name": "@riproute/router",
+	"version": "0.1.0",
+	"description": "Client-side routing for riproute: components, hooks and the routing primitives",
+	"license": "MIT",
+	"type": "module",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"exports": {
+		".": {
+			"types": "./types/index.d.ts",
+			"import": "./src/index.ts",
+			"default": "./src/index.ts"
+		},
+		"./package.json": "./package.json",
+		"./primitives": {
+			"types": "./src/primitives.ts",
+			"import": "./src/primitives.ts",
+			"default": "./src/primitives.ts"
+		}
+	},
+	"files": [
+		"src",
+		"types",
+		"riproute.d.ts"
+	],
+	"peerDependencies": {
+		"ripple": "^0.3.118"
+	},
+	"dependencies": {
+		"@riproute/adapter-kit": "workspace:*"
+	}
+}

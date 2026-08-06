@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { Outlet, defineRoutes } from '../../src/index';
-import type { RouteComponentProps } from '../../src/index';
-import { createHandler } from '../../src/server/index';
+import { Outlet, defineRoutes } from '../../packages/router/src/index';
+import type { RouteComponentProps } from '../../packages/router/src/index';
+import { createHandler } from '../../packages/riproute/src/server/index';
 
 const TEMPLATE =
 	'<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div></body></html>';

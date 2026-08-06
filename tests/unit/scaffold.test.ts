@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { componentName, isScaffoldable, scaffoldRoute } from '../../src/vite/scaffold';
+import { componentName, isScaffoldable, scaffoldRoute } from '../../packages/vite/src/scaffold';
 
 const ROUTES = path.resolve('/app/src/routes');
 const at = (...parts: string[]) => path.join(ROUTES, ...parts);
