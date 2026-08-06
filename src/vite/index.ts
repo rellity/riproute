@@ -11,7 +11,8 @@ import {
 	sendResponse,
 	toWebRequest,
 } from './dev-middleware';
-import { hasNitroPlugin, nitroBeforeRiproute } from './nitro';
+import { hasResolvedNitroPlugin, nitroBeforeRiproute, resolveAdapter } from './nitro';
+import type { AdapterName } from './options';
 import { resolveOptions } from './options';
 import type { ResolvedRiprouteOptions, RiprouteOptions } from './options';
 import { ROUTE_EXTENSIONS, scanRoutes } from './route-scan';
@@ -73,9 +74,11 @@ const SERVER_ENTRY_NAME = 'index';
  * compilation, scoped CSS, HMR and the dependency scanner, and it stays the
  * consumer's to configure. riproute contributes routing, SSR and the build.
  *
- * With `nitro()` from `nitro/vite` at the end of the array, riproute detects
- * it and serves through nitro instead of its own `node:http` entry — see
- * `nitro.ts`.
+ * The production target is chosen with `riproute({ adapter })`: `'node'`
+ * (default) and `'bun'` emit riproute's own server entry for that runtime,
+ * while `'nitro'` hands off to nitro. With `nitro()` from `nitro/vite` in the
+ * array the adapter defaults to `'nitro'` without any option — see `nitro.ts`.
+ * The build bundles only the chosen adapter.
  *
  * Ordering does not matter, but not for free: `ripple()`'s compile transform is
  * *also* `enforce: 'pre'`, so with `[ripple(), riproute()]` it would compile
@@ -110,6 +113,8 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 	let clientTags = '';
 	/** Whether nitro owns the server. See `nitro.ts` for how the wiring works. */
 	let nitroMode = false;
+	/** The resolved target: `'node'`, `'bun'` or `'nitro'`. */
+	let adapter: AdapterName = 'node';
 	/** `*.server.*` files under src/, for the server-function manifest. */
 	let serverFnFiles: string[] = [];
 
@@ -166,7 +171,8 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			const root = path.resolve(userConfig.root ?? process.cwd());
 			const resolved = resolveOptions(userOptions, root);
 
-			nitroMode = userOptions.nitro ?? hasNitroPlugin(userConfig.plugins);
+			adapter = resolveAdapter(userOptions, userConfig.plugins);
+			nitroMode = adapter === 'nitro';
 
 			const shared = {
 				// Vite's SPA fallback would answer every navigation with the raw
@@ -258,11 +264,31 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 			config = resolved;
 			options = resolveOptions(userOptions, resolved.root);
 
+			const nitroPluginPresent = hasResolvedNitroPlugin(resolved.plugins);
+
 			if (nitroMode && nitroBeforeRiproute(resolved.plugins)) {
 				resolved.logger.warn(
 					'[riproute] nitro() comes before riproute() in `plugins`. Nitro reads ' +
 						'the ssr entry riproute plants during config resolution, so it has ' +
 						'to run after riproute — move nitro() to the end of the array.'
+				);
+			}
+
+			// The adapter choice and the plugin list have to agree: nitro's plugin
+			// rewrites the whole build, so it cannot coexist with a node/bun entry,
+			// and adapter:'nitro' without the plugin has nothing to hand off to.
+			if (nitroMode && !nitroPluginPresent) {
+				resolved.logger.warn(
+					"[riproute] adapter: 'nitro' is set but nitro() is not in `plugins`. " +
+						"Add nitro() from 'nitro/vite' (after riproute), or pick adapter: 'node' | 'bun'."
+				);
+			}
+
+			if (!nitroMode && nitroPluginPresent) {
+				resolved.logger.warn(
+					`[riproute] nitro() is in \`plugins\` but adapter is '${adapter}'. Nitro drives ` +
+						"the build regardless — set adapter: 'nitro' (or remove nitro() to use the " +
+						`'${adapter}' entry).`
 				);
 			}
 
@@ -295,7 +321,11 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 					return generateHandlerModule(options, config.root);
 
 				case resolvedId(SERVER_ID):
-					return generateServerModule(options, clientTags);
+					return generateServerModule(
+						options,
+						clientTags,
+						adapter === 'bun' ? 'bun' : 'node'
+					);
 
 				case resolvedId(SERVER_FNS_ID):
 					return generateServerFnManifestModule(serverFnFiles, config.root);

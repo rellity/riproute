@@ -1,9 +1,14 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { hasNitroPlugin, nitroBeforeRiproute } from '../../src/vite/nitro';
+import {
+	hasNitroPlugin,
+	hasResolvedNitroPlugin,
+	nitroBeforeRiproute,
+	resolveAdapter,
+} from '../../src/vite/nitro';
 import { resolveOptions } from '../../src/vite/options';
-import { generateNitroModule } from '../../src/vite/virtual-modules';
+import { generateNitroModule, generateServerModule } from '../../src/vite/virtual-modules';
 
 const nitroish = (name: string) => ({ name });
 
@@ -92,5 +97,53 @@ describe('generateNitroModule', () => {
 		});
 
 		expect(code).toContain('No document to render');
+	});
+});
+
+describe('resolveAdapter', () => {
+	it('defaults to node, and to nitro when the plugin is present', () => {
+		expect(resolveAdapter({}, [nitroish('riproute')])).toBe('node');
+		expect(resolveAdapter({}, [nitroish('riproute'), nitroish('nitro:main')])).toBe('nitro');
+	});
+
+	it('an explicit adapter always wins', () => {
+		expect(resolveAdapter({ adapter: 'bun' }, [nitroish('nitro:main')])).toBe('bun');
+		expect(resolveAdapter({ adapter: 'node' }, [nitroish('nitro:main')])).toBe('node');
+		expect(resolveAdapter({ adapter: 'nitro' }, [])).toBe('nitro');
+	});
+
+	it('honours the legacy nitro boolean as an override', () => {
+		expect(resolveAdapter({ nitro: true }, [])).toBe('nitro');
+		expect(resolveAdapter({ nitro: false }, [nitroish('nitro:main')])).toBe('node');
+	});
+});
+
+describe('hasResolvedNitroPlugin', () => {
+	it('detects the nitro plugin by name in the resolved list', () => {
+		expect(hasResolvedNitroPlugin([nitroish('riproute'), nitroish('nitro:env')])).toBe(true);
+		expect(hasResolvedNitroPlugin([nitroish('riproute'), nitroish('ripple')])).toBe(false);
+	});
+});
+
+describe('generateServerModule adapter selection', () => {
+	const options = resolveOptions({}, path.resolve('/app'));
+
+	it('imports the chosen adapter package, and only that one', () => {
+		const node = generateServerModule(options, '', 'node');
+		const bun = generateServerModule(options, '', 'bun');
+
+		expect(node).toContain("from 'riproute/adapter-node'");
+		expect(node).not.toContain('adapter-bun');
+
+		expect(bun).toContain("from 'riproute/adapter-bun'");
+		expect(bun).not.toContain('adapter-node');
+
+		// Both are otherwise the same complete server entry.
+		expect(bun).toContain('createServer(handler)');
+		expect(bun).toContain('serveStatic(clientDir');
+	});
+
+	it('defaults to node', () => {
+		expect(generateServerModule(options, '')).toContain("from 'riproute/adapter-node'");
 	});
 });

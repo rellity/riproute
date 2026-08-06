@@ -53,3 +53,27 @@ export function nitroBeforeRiproute(plugins: readonly { name: string }[]): boole
 
 	return nitroIndex !== -1 && riprouteIndex !== -1 && nitroIndex < riprouteIndex;
 }
+
+/** Whether the resolved plugin list contains the nitro plugin. */
+export function hasResolvedNitroPlugin(plugins: readonly { name: string }[]): boolean {
+	return plugins.some((plugin) => NITRO_PLUGIN_NAMES.has(plugin.name));
+}
+
+/**
+ * Resolves which adapter the build targets.
+ *
+ * An explicit `adapter` wins. Otherwise the legacy `nitro` boolean is honoured
+ * (`true` → nitro, `false` → never nitro), and failing both, the nitro plugin's
+ * mere presence selects nitro — so `[riproute(), ripple(), nitro()]` needs no
+ * further configuration. Everything else defaults to node.
+ */
+export function resolveAdapter(
+	options: { adapter?: 'node' | 'bun' | 'nitro'; nitro?: boolean },
+	plugins: unknown
+): 'node' | 'bun' | 'nitro' {
+	if (options.adapter !== undefined) return options.adapter;
+	if (options.nitro === true) return 'nitro';
+	if (options.nitro === false) return 'node';
+
+	return hasNitroPlugin(plugins) ? 'nitro' : 'node';
+}

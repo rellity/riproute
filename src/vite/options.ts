@@ -46,14 +46,27 @@ export type RiprouteOptions = {
 	 */
 	scaffold?: boolean;
 	/**
-	 * Serve through nitro instead of riproute's own `node:http` entry.
+	 * Which server the production build targets.
 	 *
-	 * Auto-detected: adding `nitro()` from `nitro/vite` to the plugin array
-	 * (after riproute) is enough. Set explicitly only to override the
-	 * detection.
+	 * - `'node'` — riproute's own `node:http` entry (`node dist/server`).
+	 * - `'bun'` — riproute's own `Bun.serve` entry (`bun dist/server`).
+	 * - `'nitro'` — hand off to nitro (needs `nitro()` from `nitro/vite` in the
+	 *   plugin array), which produces `.output/` for any preset.
+	 *
+	 * Defaults to `'node'`, unless the nitro plugin is present — then `'nitro'`.
+	 * The build bundles only the chosen adapter; the others are tree-shaken out.
+	 */
+	adapter?: 'node' | 'bun' | 'nitro';
+	/**
+	 * Serve through nitro instead of riproute's own entry.
+	 *
+	 * @deprecated Prefer `adapter: 'nitro'`. Kept as an override of the
+	 * auto-detection: `false` opts out even when the nitro plugin is present.
 	 */
 	nitro?: boolean;
 };
+
+export type AdapterName = 'node' | 'bun' | 'nitro';
 
 export type ResolvedRiprouteOptions = {
 	routesDir: string | null;

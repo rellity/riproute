@@ -43,6 +43,11 @@
 			"import": "./dist/adapter-node/index.js",
 			"default": "./dist/adapter-node/index.js"
 		},
+		"./adapter-bun": {
+			"types": "./dist/adapter-bun/index.d.ts",
+			"import": "./dist/adapter-bun/index.js",
+			"default": "./dist/adapter-bun/index.js"
+		},
 		"./package.json": "./package.json"
 	},
 	"files": [

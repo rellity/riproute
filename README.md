@@ -453,6 +453,29 @@ Importing `dist/server/index.js` with `RIPROUTE_NO_LISTEN=1` set exports the
 bare `handler` and `server` instead of booting, for embedding in another
 process.
 
+### Adapters
+
+The production target is one option:
+
+```ts
+riproute({ adapter: 'node' }); // default
+riproute({ adapter: 'bun' }); //  run with `bun dist/server`
+riproute({ adapter: 'nitro' }); // hand off to nitro, below
+```
+
+`'node'` and `'bun'` build the same `dist/server/index.js` — a complete server
+for that runtime, with the same compression, graceful shutdown, proxy-trust,
+static hardening and `RIPROUTE_NO_LISTEN` behaviour. Bun's is thinner because
+`Bun.serve` speaks web standards directly. The build bundles **only** the
+chosen adapter: a Bun build carries no `node:http`, a node build no
+`Bun.serve`, and the shared static/compression code is the one hardened copy.
+
+Both `createServer` functions take the same options — `trustProxy`,
+`allowedHosts`, `compress`, `gracefulShutdown`, `shutdownTimeout`, `onError`.
+The generated entry uses the defaults; to set your own, import its `handler`
+with `RIPROUTE_NO_LISTEN=1` and wrap it in `createServer(handler, { … })` from
+`riproute/adapter-node` or `riproute/adapter-bun`.
+
 ### Nitro
 
 To deploy through [nitro](https://nitro.build) instead of the built-in
