@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveTitle } from '../../src/utils/title';
+import { resolveTitle } from '../../packages/router/src/utils/title';
 
 describe('resolveTitle', () => {
 	it('uses the text as written by default', () => {

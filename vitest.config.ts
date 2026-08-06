@@ -1,9 +1,15 @@
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
 import { compile } from 'ripple/compiler';
 import { defineConfig } from 'vitest/config';
 import type { Plugin } from 'vite';
 
-import { isRiprouteSource } from './src/vite/package-root';
-import { rewriteTitles } from './src/vite/title-rewrite';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const resolve = (relative: string): string => path.join(here, relative);
+
+import { isRiprouteSource } from './packages/vite/src/package-root';
+import { rewriteTitles } from './packages/vite/src/title-rewrite';
 
 /**
  * Minimal `.tsrx` transform.
@@ -30,8 +36,40 @@ function tsrx(mode: 'client' | 'server'): Plugin {
 	};
 }
 
+/**
+ * Workspace packages resolve to source in tests.
+ *
+ * The packages are not built when the suite runs, and pointing at `dist/`
+ * would test yesterday's output. `@riproute/adapter-kit/node` has to come
+ * before the bare specifier so the subpath is not swallowed by it.
+ */
+const workspace = [
+	{
+		find: '@riproute/adapter-kit/node',
+		replacement: resolve('packages/adapter-kit/src/node.ts'),
+	},
+	{ find: '@riproute/adapter-kit', replacement: resolve('packages/adapter-kit/src/index.ts') },
+	{
+		find: '@riproute/riproute/server-only',
+		replacement: resolve('packages/riproute/src/server-only.ts'),
+	},
+	{
+		find: '@riproute/riproute/server',
+		replacement: resolve('packages/riproute/src/server/index.ts'),
+	},
+	{ find: '@riproute/riproute', replacement: resolve('packages/riproute/src/index.ts') },
+	{
+		find: '@riproute/router/primitives',
+		replacement: resolve('packages/router/src/primitives.ts'),
+	},
+	{ find: '@riproute/router', replacement: resolve('packages/router/src/index.ts') },
+	{ find: '@riproute/node', replacement: resolve('packages/node/src/index.ts') },
+	{ find: '@riproute/bun', replacement: resolve('packages/bun/src/index.ts') },
+	{ find: '@riproute/cloudflare', replacement: resolve('packages/cloudflare/src/index.ts') },
+];
+
 const shared = {
-	resolve: { extensions: ['.tsrx', '.ts', '.js', '.json'] },
+	resolve: { extensions: ['.tsrx', '.ts', '.js', '.json'], alias: workspace },
 	esbuild: { target: 'esnext' },
 };
 
@@ -70,7 +108,7 @@ export default defineConfig({
 					...shared.resolve,
 					// `ripple` must resolve to its server build here, the same
 					// way the metaframework resolves it during SSR.
-					alias: [{ find: /^ripple$/, replacement: 'ripple/server' }],
+					alias: [...workspace, { find: /^ripple$/, replacement: 'ripple/server' }],
 				},
 				test: {
 					name: 'server',

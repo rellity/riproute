@@ -1,0 +1,33 @@
+{
+	"name": "@riproute/adapter-kit",
+	"version": "0.1.0",
+	"description": "Shared adapter contract and helpers for riproute adapters",
+	"license": "MIT",
+	"type": "module",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"scripts": {
+		"build": "tsdown"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./node": {
+			"types": "./dist/node.d.ts",
+			"import": "./dist/node.js",
+			"default": "./dist/node.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist"
+	],
+	"devDependencies": {
+		"tsdown": "^0.15.1",
+		"typescript": "^5.9.2"
+	}
+}

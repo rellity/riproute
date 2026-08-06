@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { extractBaseTitle } from '../../src/vite/title-rewrite';
+import { extractBaseTitle } from '../../packages/vite/src/title-rewrite';
 
 function shell(head: string): string {
 	return [

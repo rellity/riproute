@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { filePathToRoutePath, scanRoutes } from '../../src/vite/route-scan';
+import { filePathToRoutePath, scanRoutes } from '../../packages/vite/src/route-scan';
 
 const dirs: string[] = [];
 

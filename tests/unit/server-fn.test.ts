@@ -3,22 +3,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createServerFnStub } from '../../src/server-fn-client';
-import { isClientEnvironment } from '../../src/vite/package-root';
-import { serverFnClientPlugin } from '../../src/vite/server-fn';
+import { createServerFnStub } from '../../packages/router/src/server-fn-client';
+import { isClientEnvironment } from '../../packages/vite/src/package-root';
+import { serverFnClientPlugin } from '../../packages/vite/src/server-fn';
 import {
 	createServerFnDispatch,
 	getRequestEvent,
 	serverFn,
 	ServerFnError,
 	withRequestEvent,
-} from '../../src/server/server-fn';
+} from '../../packages/riproute/src/server/server-fn';
 import {
 	collectServerFnExports,
 	generateServerFnProxyModule,
 	isServerFnFile,
 	serverFnHash,
-} from '../../src/vite/server-fn';
+} from '../../packages/vite/src/server-fn';
 
 const FILE = '/app/src/lib/todos.server.ts';
 
@@ -27,7 +27,7 @@ describe('collectServerFnExports', () => {
 
 	it('finds serverFn exports, and only those', async () => {
 		const source = [
-			"import { serverFn } from 'riproute/server';",
+			"import { serverFn } from '@riproute/riproute/server';",
 			'',
 			'export const addTodo = serverFn(async (text: string) => text);',
 			'export const listTodos = serverFn(async () => []);',
@@ -41,7 +41,7 @@ describe('collectServerFnExports', () => {
 
 	it('follows an import alias and ignores lookalike callees', async () => {
 		const aliased = [
-			"import { serverFn as fn } from 'riproute/server';",
+			"import { serverFn as fn } from '@riproute/riproute/server';",
 			'export const a = fn(async () => 1);',
 		].join('\n');
 
@@ -57,7 +57,7 @@ describe('collectServerFnExports', () => {
 
 	it('handles a default export and a file with no marker at all', async () => {
 		const withDefault = [
-			"import { serverFn } from 'riproute/server';",
+			"import { serverFn } from '@riproute/riproute/server';",
 			'export default serverFn(async () => 1);',
 		].join('\n');
 
@@ -67,7 +67,7 @@ describe('collectServerFnExports', () => {
 
 	it('finds the builder chain form', async () => {
 		const source = [
-			"import { serverFn } from 'riproute/server';",
+			"import { serverFn } from '@riproute/riproute/server';",
 			'',
 			'export const addTodo = serverFn()',
 			'\t.middleware([(event, next) => next()])',
@@ -88,7 +88,7 @@ describe('generateServerFnProxyModule', () => {
 		const addTodoHash = serverFnHash(FILE, '/app', 'addTodo');
 		const defaultHash = serverFnHash(FILE, '/app', 'default');
 
-		expect(code).toContain("import { createServerFnStub } from 'riproute';");
+		expect(code).toContain("import { createServerFnStub } from '@riproute/router';");
 		expect(code).toContain(
 			`export const addTodo = createServerFnStub("${addTodoHash}", "addTodo");`
 		);
@@ -132,7 +132,7 @@ describe('client-environment gating', () => {
 
 		fs.writeFileSync(
 			file,
-			"import { serverFn } from 'riproute/server';\nexport const a = serverFn(async () => 1);\n"
+			"import { serverFn } from '@riproute/riproute/server';\nexport const a = serverFn(async () => 1);\n"
 		);
 
 		const plugin = serverFnClientPlugin() as never as {

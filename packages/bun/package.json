@@ -1,0 +1,36 @@
+{
+	"name": "@riproute/bun",
+	"version": "0.1.0",
+	"description": "Bun (Bun.serve) adapter for riproute",
+	"license": "MIT",
+	"type": "module",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"scripts": {
+		"build": "tsdown"
+	},
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./adapter": {
+			"types": "./dist/adapter.d.ts",
+			"import": "./dist/adapter.js",
+			"default": "./dist/adapter.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@riproute/adapter-kit": "workspace:*"
+	},
+	"devDependencies": {
+		"tsdown": "^0.15.1",
+		"typescript": "^5.9.2"
+	}
+}

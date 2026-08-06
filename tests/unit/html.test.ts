@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { BODY_MARKER, HEAD_MARKER, fillTemplate, splitTemplate } from '../../src/server/html';
+import {
+	BODY_MARKER,
+	HEAD_MARKER,
+	fillTemplate,
+	splitTemplate,
+} from '../../packages/riproute/src/server/html';
 
 const PLAIN =
 	'<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div></body></html>';

@@ -12,21 +12,24 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
+            - uses: pnpm/action-setup@v4
+
             - uses: actions/setup-node@v4
               with:
                   node-version: 22
-                  cache: npm
+                  cache: pnpm
 
-            # `npm ci` runs `prepare`, which builds dist/ — the example links to this
-            # package and imports the built plugin from it.
-            - run: npm ci
-            - run: npm ci --prefix example
+            - run: pnpm install --frozen-lockfile
 
-            - run: npm run format:check
-            - run: npm test
+            # The adapters and the plugin ship built; the suite resolves the
+            # workspace through them, and the example builds against the plugin.
+            - run: pnpm build
+
+            - run: pnpm format:check
+            - run: pnpm test
 
             # The checks that matter most need a real browser against a real server:
             # a failed hydration is only a console warning, and a lost outlet anchor
             # only shows up on the second render.
-            - run: npx playwright install --with-deps chromium
-            - run: npm run test:e2e
+            - run: pnpm exec playwright install --with-deps chromium
+            - run: pnpm test:e2e
