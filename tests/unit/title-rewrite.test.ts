@@ -31,9 +31,9 @@ describe('rewriteTitles', () => {
 		expect(await element("<title>{'docs'}</title>")).toBe("<RiprouteTitle text={'docs'} />");
 	});
 
-	it('keeps the append keyword', async () => {
-		expect(await element("<title append>{'home'}</title>")).toBe(
-			"<RiprouteTitle text={'home'} append />"
+	it('keeps the extend keyword', async () => {
+		expect(await element("<title extend>{'home'}</title>")).toBe(
+			"<RiprouteTitle text={'home'} extend />"
 		);
 	});
 
@@ -44,11 +44,11 @@ describe('rewriteTitles', () => {
 	});
 
 	it('passes other attributes through as written', async () => {
-		expect(await element('<title append separator=" · ">{\'home\'}</title>')).toBe(
-			'<RiprouteTitle text={\'home\'} append separator=" · " />'
+		expect(await element('<title extend separator=" · ">{\'home\'}</title>')).toBe(
+			'<RiprouteTitle text={\'home\'} extend separator=" · " />'
 		);
-		expect(await element("<title append separator={' · '}>{'home'}</title>")).toBe(
-			"<RiprouteTitle text={'home'} append separator={' · '} />"
+		expect(await element("<title extend separator={' · '}>{'home'}</title>")).toBe(
+			"<RiprouteTitle text={'home'} extend separator={' · '} />"
 		);
 	});
 
@@ -59,8 +59,8 @@ describe('rewriteTitles', () => {
 	});
 
 	it('quotes plain text', async () => {
-		expect(await element('<title append>About us</title>')).toBe(
-			'<RiprouteTitle text={"About us"} append />'
+		expect(await element('<title extend>About us</title>')).toBe(
+			'<RiprouteTitle text={"About us"} extend />'
 		);
 	});
 
@@ -92,7 +92,7 @@ describe('rewriteTitles', () => {
 	});
 
 	it('refuses an empty <title>', async () => {
-		await expect(rewrite('<title append></title>')).rejects.toThrow(/needs content/);
+		await expect(rewrite('<title extend></title>')).rejects.toThrow(/needs content/);
 		await expect(rewrite('<title>   </title>')).rejects.toThrow(/needs content/);
 	});
 
@@ -103,10 +103,10 @@ describe('rewriteTitles', () => {
 	});
 
 	it('rewrites every <title> in a file', async () => {
-		const rewritten = await rewrite("<title>{'a'}</title>\n\t\t<title append>{'b'}</title>");
+		const rewritten = await rewrite("<title>{'a'}</title>\n\t\t<title extend>{'b'}</title>");
 
 		expect(rewritten).toContain("<RiprouteTitle text={'a'} />");
-		expect(rewritten).toContain("<RiprouteTitle text={'b'} append />");
+		expect(rewritten).toContain("<RiprouteTitle text={'b'} extend />");
 		expect(rewritten.match(/RiprouteTitle text/g)).toHaveLength(2);
 	});
 
@@ -120,11 +120,11 @@ describe('rewriteTitles', () => {
 	});
 
 	it('keeps line numbers when the element spanned several lines', async () => {
-		const source = component("<title\n\t\t\tappend\n\t\t>{'home'}</title>");
+		const source = component("<title\n\t\t\textend\n\t\t>{'home'}</title>");
 		const rewritten = await rewriteTitles(source, '/src/routes/page.tsrx');
 
 		expect(rewritten.split('\n')).toHaveLength(source.split('\n').length);
-		expect(rewritten).toContain('append');
+		expect(rewritten).toContain('extend');
 	});
 
 	it('picks a different local name when RiprouteTitle is taken', async () => {
@@ -146,7 +146,7 @@ describe('titleRewritePlugin load hook', () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'riproute-title-'));
 		const file = path.join(dir, 'page.tsrx');
 
-		fs.writeFileSync(file, component("<title append>{'home'}</title>"));
+		fs.writeFileSync(file, component("<title extend>{'home'}</title>"));
 
 		try {
 			const plugin = titleRewritePlugin() as never as {
@@ -160,7 +160,7 @@ describe('titleRewritePlugin load hook', () => {
 			const result = await plugin.load(file);
 
 			expect(result).not.toBeNull();
-			expect(result?.code).toContain("<RiprouteTitle text={'home'} append />");
+			expect(result?.code).toContain("<RiprouteTitle text={'home'} extend />");
 
 			// Files with nothing to rewrite fall through to Vite's default loader.
 			fs.writeFileSync(file, component("<h1>{'hi'}</h1>"));

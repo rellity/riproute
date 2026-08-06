@@ -9,7 +9,7 @@ export const DEFAULT_TITLE_SEPARATOR = ' | ';
  * Resolves the document title a `<Title>` asks for.
  *
  * - `&title` anywhere in the text is replaced with the base title.
- * - In `append` mode, a text with no `&title` gets the base title appended
+ * - In `extend` mode, a text with no `&title` gets the base title appended
  *   after the separator. `replace` — the default — uses the text as written.
  * - An empty base title collapses cleanly: no dangling separators.
  */
@@ -29,7 +29,7 @@ export function resolveTitle(
 		return trimmed_base === '' ? trimSeparator(substituted, separator) : substituted.trim();
 	}
 
-	if (options.mode === 'append' && trimmed_base !== '') {
+	if (options.mode === 'extend' && trimmed_base !== '') {
 		return `${text.trim()}${separator}${trimmed_base}`;
 	}
 

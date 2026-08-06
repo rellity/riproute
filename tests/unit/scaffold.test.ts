@@ -25,7 +25,7 @@ describe('scaffoldRoute', () => {
 		const template = scaffoldRoute(at('about.tsrx'), ROUTES);
 
 		expect(template).toContain('export default function About() @{');
-		expect(template).toContain("<title append>{'about'}</title>");
+		expect(template).toContain("<title extend>{'about'}</title>");
 		expect(template).toContain('<div>');
 	});
 

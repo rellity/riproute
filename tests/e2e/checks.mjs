@@ -67,7 +67,7 @@ export async function runChecks(baseUrl, label) {
 	);
 
 	check('exactly one <title>', (await page.locator('title').count()) === 1);
-	// The home page claims `home` with `append`; the base comes from the
+	// The home page claims `home` with `extend`; the base comes from the
 	// shell's own <head>, not from vite.config.ts.
 	check('hydrated page claims its title', (await page.title()) === 'home | riproute');
 

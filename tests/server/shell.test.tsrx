@@ -23,7 +23,7 @@ function Shell(props: { children?: Children }) @{
 
 function Home() @{
 	<div>
-		<title append>{'home'}</title>
+		<title extend>{'home'}</title>
 		<h1>{'Home'}</h1>
 	</div>
 }

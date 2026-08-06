@@ -13,10 +13,10 @@ import { isRiprouteSource } from './package-root';
  * own. This transform turns
  *
  * ```tsrx
- * <title append>{'home | &title'}</title>
+ * <title extend>{'home | &title'}</title>
  * ```
  *
- * into `<RiprouteTitle text={'home | &title'} append />`, which calls
+ * into `<RiprouteTitle text={'home | &title'} extend />`, which calls
  * `router.setTitle()` and renders nothing but an inert anchor.
  *
  * Every literal `<title>` is rewritten, not just the ones carrying a keyword —
@@ -52,7 +52,7 @@ const TSRX = /\.tsrx(\?|$)/;
  * on a plugin that is *also* `enforce: 'pre'`, so within the pre phase the
  * `plugins` array order decides — write `[ripple(), riproute()]` and a
  * transform-based rewrite would run *after* the compiler, leaving raw
- * `<title append>` elements in the document. Every `load` hook runs before any
+ * `<title extend>` elements in the document. Every `load` hook runs before any
  * plugin's transform, so loading the rewritten source wins under either order.
  *
  * The transform stays as well: pipelines that feed source straight through
@@ -288,7 +288,7 @@ function uniqueLocalName(source: string): string {
 function buildElement(source: string, element: Node, local: string, filename: string): string {
 	const text = buildText(source, element, filename);
 
-	// Attributes pass through as written, so `append`, `replace`, `separator`
+	// Attributes pass through as written, so `extend`, `replace`, `separator`
 	// in either spelling, and anything added later all keep working.
 	const attributes = (element.openingElement.attributes as Node[])
 		.map((attribute) => source.slice(attribute.start, attribute.end))

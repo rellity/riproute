@@ -151,15 +151,15 @@ export type RedirectProps = {
 	replace?: boolean;
 };
 
-export type TitleMode = 'replace' | 'append';
+export type TitleMode = 'replace' | 'extend';
 
 export type TitleProps = {
 	/** The title text. `&title` is replaced with the router's base title. */
 	text: string;
-	/** Append the base title when `text` contains no `&title`. */
-	append?: boolean;
+	/** Extend the base title when `text` contains no `&title`. */
+	extend?: boolean;
 	/** Explicitly request the default (replace) behaviour. */
 	replace?: boolean;
-	/** Joins text and base title in `append` mode. Defaults to `' | '`. */
+	/** Joins text and base title in `extend` mode. Defaults to `' | '`. */
 	separator?: string;
 };

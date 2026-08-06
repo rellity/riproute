@@ -40,7 +40,7 @@ export declare function NotFound(): void;
 /**
  * Claims the document title for the route it renders in.
  *
- * Written as a literal `<title append>{'home | &title'}</title>` in a route —
+ * Written as a literal `<title extend>{'home | &title'}</title>` in a route —
  * the Vite plugin rewrites that into this. Usable directly if you need to build
  * the text somewhere the rewrite cannot see.
  */

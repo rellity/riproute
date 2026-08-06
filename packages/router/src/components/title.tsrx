@@ -7,7 +7,7 @@ import { resolveTitle } from '../utils/title';
 /**
  * Claims the document title for the route it renders in.
  *
- * Not usually written by hand — author `<title append>{'home | &title'}</title>`
+ * Not usually written by hand — author `<title extend>{'home | &title'}</title>`
  * in a route and the Vite plugin rewrites it into this.
  *
  * The claim rides on the anchor's *attribute expression*, not `effect()`.
@@ -27,7 +27,7 @@ export function Title(props: TitleProps) @{
 	// before `resolveTitle` goes looking for `&title` inside it.
 	const resolved = track(() =>
 		resolveTitle(String(props.text ?? ''), router.baseTitle, {
-			mode: props.append === true && props.replace !== true ? 'append' : 'replace',
+			mode: props.extend === true && props.replace !== true ? 'extend' : 'replace',
 			separator: props.separator,
 		})
 	);

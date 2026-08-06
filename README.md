@@ -197,7 +197,7 @@ exactly one `<title>` for the document.
 ```tsrx
 export default function About() @{
 	<div>
-		<title append>{'About | &title'}</title>
+		<title extend>{'About | &title'}</title>
 		<h1>{'About'}</h1>
 	</div>
 }
@@ -205,17 +205,18 @@ export default function About() @{
 
 `&title` expands to the base title — the `<title>` written in the shell's
 `<head>` (or, failing that, the plugin's `title` option) — and `replace` is the
-default. So the keyword is only ever needed to append _without_ the token:
+default. So the keyword is only ever needed to extend the base _without_ the
+token:
 
-| Written                                                | With base title `Site`                        |
-| ------------------------------------------------------ | --------------------------------------------- |
-| `<title>{'docs'}</title>`                              | `docs`                                        |
-| `<title replace>{'docs'}</title>`                      | `docs`, said out loud                         |
-| `<title>{'home \| &title'}</title>`                    | `home \| Site` — the token does the appending |
-| `<title append>{'home'}</title>`                       | `home \| Site`                                |
-| `<title append separator=" · ">{'home'}</title>`       | `home · Site`                                 |
-| `<title append>{'home \| &title'}</title>`             | `home \| Site` — never appended twice         |
-| `<title>{'home \| &title'}</title>`, no `title` option | `home` — no dangling separator                |
+| Written                                                | With base title `Site`                      |
+| ------------------------------------------------------ | ------------------------------------------- |
+| `<title>{'docs'}</title>`                              | `docs`                                      |
+| `<title replace>{'docs'}</title>`                      | `docs`, said out loud                       |
+| `<title>{'home \| &title'}</title>`                    | `home \| Site` — the token does the joining |
+| `<title extend>{'home'}</title>`                       | `home \| Site`                              |
+| `<title extend separator=" · ">{'home'}</title>`       | `home · Site`                               |
+| `<title extend>{'home \| &title'}</title>`             | `home \| Site` — never joined twice         |
+| `<title>{'home \| &title'}</title>`, no `title` option | `home` — no dangling separator              |
 
 Any expression works, so a title can be built from the route's params:
 `<title>{`User ${props.params.id}`}</title>`. The last claim rendered wins.

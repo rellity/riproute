@@ -18,7 +18,7 @@ export default function Rpc() @{
 	const { mutate: callGreet, data: reply, loading: greeting } = useMutateFn(greet);
 
 	<div>
-		<title append>{'server functions'}</title>
+		<title extend>{'server functions'}</title>
 		<h1>{'Server functions'}</h1>
 		<button
 			disabled={greeting.value}

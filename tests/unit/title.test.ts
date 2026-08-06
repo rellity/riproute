@@ -15,28 +15,28 @@ describe('resolveTitle', () => {
 		expect(resolveTitle('&title — home — &title', 'Site')).toBe('Site — home — Site');
 	});
 
-	it('substitutes in append mode too, without appending twice', () => {
-		expect(resolveTitle('home | &title', 'Site', { mode: 'append' })).toBe('home | Site');
+	it('substitutes in extend mode too, without appending twice', () => {
+		expect(resolveTitle('home | &title', 'Site', { mode: 'extend' })).toBe('home | Site');
 	});
 
 	it('appends the base title when there is no token', () => {
-		expect(resolveTitle('home', 'Site', { mode: 'append' })).toBe('home | Site');
+		expect(resolveTitle('home', 'Site', { mode: 'extend' })).toBe('home | Site');
 	});
 
 	it('honours a custom separator when appending', () => {
-		expect(resolveTitle('home', 'Site', { mode: 'append', separator: ' · ' })).toBe(
+		expect(resolveTitle('home', 'Site', { mode: 'extend', separator: ' · ' })).toBe(
 			'home · Site'
 		);
 	});
 
 	it('ignores the separator when the token places the base title', () => {
-		expect(resolveTitle('home — &title', 'Site', { mode: 'append', separator: ' · ' })).toBe(
+		expect(resolveTitle('home — &title', 'Site', { mode: 'extend', separator: ' · ' })).toBe(
 			'home — Site'
 		);
 	});
 
 	it('appends nothing when the base title is empty', () => {
-		expect(resolveTitle('home', '', { mode: 'append' })).toBe('home');
+		expect(resolveTitle('home', '', { mode: 'extend' })).toBe('home');
 	});
 
 	it('drops the dangling separator when the token has no base title to expand to', () => {

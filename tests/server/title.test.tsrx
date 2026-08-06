@@ -9,7 +9,7 @@ const TEMPLATE =
 
 function Home() @{
 	<div>
-		<title append>{'Home'}</title>
+		<title extend>{'Home'}</title>
 		<h1>{'Home'}</h1>
 	</div>
 }
@@ -35,7 +35,7 @@ function Token() @{
 
 function Separator() @{
 	<div>
-		<title append separator=" · ">{'sep'}</title>
+		<title extend separator=" · ">{'sep'}</title>
 	</div>
 }
 
@@ -80,7 +80,7 @@ async function titleOf(url: string, title?: string) {
 }
 
 describe('literal <title>', () => {
-	it('appends the base title', async () => {
+	it('extends the base title', async () => {
 		expect(await titleOf('/', 'Site')).toBe('Home | Site');
 	});
 
@@ -92,7 +92,7 @@ describe('literal <title>', () => {
 		expect(await titleOf('/plain', 'Site')).toBe('plain');
 	});
 
-	it('expands &title without needing append', async () => {
+	it('expands &title without needing extend', async () => {
 		expect(await titleOf('/token', 'Site')).toBe('home | Site');
 	});
 

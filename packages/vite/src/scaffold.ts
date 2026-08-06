@@ -74,7 +74,7 @@ function routeTemplate(routePath: string): string {
 			'',
 			`export default function ${name}(props: RouteComponentProps<'${routePath}'>) @{`,
 			'\t<div>',
-			`\t\t<title append>{'${humanize(routePath)}'}</title>`,
+			`\t\t<title extend>{'${humanize(routePath)}'}</title>`,
 			'',
 			`\t\t<h1>{\`${humanize(routePath)}: \${props.params.${params[0]}}\`}</h1>`,
 			'\t</div>',
@@ -84,7 +84,7 @@ function routeTemplate(routePath: string): string {
 		lines.push(
 			`export default function ${name}() @{`,
 			'\t<div>',
-			`\t\t<title append>{'${humanize(routePath)}'}</title>`,
+			`\t\t<title extend>{'${humanize(routePath)}'}</title>`,
 			'',
 			`\t\t<h1>{'${humanize(routePath)}'}</h1>`,
 			'\t</div>',
