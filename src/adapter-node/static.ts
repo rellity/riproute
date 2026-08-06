@@ -32,6 +32,12 @@ export type ServeStaticOptions = {
 	immutable?: string[];
 	/** `Cache-Control` for everything else. */
 	cacheControl?: string;
+	/**
+	 * The app's base path, when it is not served from the root. Asset URLs carry
+	 * it, so it has to come off the pathname before the file is looked up —
+	 * otherwise every asset 404s under a non-default `base`.
+	 */
+	base?: string;
 };
 
 const IMMUTABLE = 'public, max-age=31536000, immutable';
@@ -62,12 +68,19 @@ export function serveStatic(
 	const immutable = (options.immutable ?? []).map((entry) => `/${trim(entry)}/`);
 	const cacheControl = options.cacheControl ?? 'public, max-age=0, must-revalidate';
 
+	// Normalized to `/prefix` with no trailing slash, or `''` at the root.
+	const base = `/${trim(options.base ?? '')}`.replace(/\/$/, '');
+
 	return async function serve(request) {
 		if (request.method !== 'GET' && request.method !== 'HEAD') return undefined;
 
-		const pathname = decodeUrlPath(new URL(request.url).pathname);
+		const raw = decodeUrlPath(new URL(request.url).pathname);
 
-		if (pathname === null) return undefined;
+		if (raw === null) return undefined;
+
+		if (base !== '' && !(raw === base || raw.startsWith(`${base}/`))) return undefined;
+
+		const pathname = base === '' ? raw : raw.slice(base.length) || '/';
 
 		// The document itself is rendered, never served from disk — otherwise
 		// the shell would win over every route.

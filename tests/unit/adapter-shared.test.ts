@@ -34,4 +34,28 @@ describe('normalizeWebRequest', () => {
 			normalizeWebRequest(at('http://evil.test/'), { allowedHosts: ['app.test'] })
 		).toThrow(/Refused Host/);
 	});
+
+	it('does not carry the internal port onto a forwarded host', () => {
+		// The WHATWG `host` setter only replaces the port when the new value has
+		// one, so mutating left `:3000` behind and every absolute link the app
+		// derived (redirects, reset mails, OAuth callbacks) pointed at it.
+		const request = at('http://127.0.0.1:3000/reset?tok=1', {
+			'x-forwarded-host': 'app.example.com',
+			'x-forwarded-proto': 'https',
+		});
+
+		expect(normalizeWebRequest(request, { trustProxy: true }).url).toBe(
+			'https://app.example.com/reset?tok=1'
+		);
+	});
+
+	it('keeps an explicit port on the forwarded host', () => {
+		const request = at('http://127.0.0.1:3000/x', {
+			'x-forwarded-host': 'app.example.com:8443',
+		});
+
+		expect(new URL(normalizeWebRequest(request, { trustProxy: true }).url).host).toBe(
+			'app.example.com:8443'
+		);
+	});
 });

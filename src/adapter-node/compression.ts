@@ -1,4 +1,4 @@
-import { PassThrough, Readable, Transform } from 'node:stream';
+import { Transform } from 'node:stream';
 import zlib from 'node:zlib';
 
 /**
@@ -84,17 +84,114 @@ export function createCompressor(encoding: Exclude<Encoding, null>): Transform {
 		: zlib.createGzip({ level: 6 });
 }
 
-/** Runs a web `ReadableStream` through a compressor, back to a web stream. */
+/**
+ * Runs a web `ReadableStream` through a compressor, back to a web stream.
+ *
+ * `pipeline`, not `.pipe()`, and an explicit `cancel` that reaches all the way
+ * back to `body`. Both halves are load-bearing:
+ *
+ * - `.pipe()` does not forward errors, so a source that failed mid-response
+ *   left `output` neither ended nor errored — the client saw a `200` that
+ *   truncated and never terminated.
+ * - Cancelling the returned stream (which is what a runtime does when the
+ *   client disconnects) did not tear down the compressor or the source, so the
+ *   app's producer kept being pulled forever. One aborted request pinned a CPU
+ *   core permanently; a handful exhausted the host.
+ */
 export function compressStream(
 	body: ReadableStream<Uint8Array>,
 	encoding: Exclude<Encoding, null>
 ): ReadableStream<Uint8Array> {
 	const compressor = createCompressor(encoding);
-	const output = new PassThrough();
+	const reader = body.getReader();
 
-	Readable.fromWeb(body as never)
-		.pipe(compressor)
-		.pipe(output);
+	// `settled` gates every controller call: enqueuing or closing after the
+	// stream has closed, errored or been cancelled throws `ERR_INVALID_STATE`
+	// on top of whatever actually went wrong.
+	let settled = false;
 
-	return Readable.toWeb(output) as ReadableStream<Uint8Array>;
+	// The source is pumped by hand rather than through `Readable.fromWeb`:
+	// Bun's implementation of it lets an error from the source escape as an
+	// uncaught exception even with `error` handlers attached (verified against
+	// plain node:stream APIs on Bun 1.3.11), and doing it here keeps the error
+	// and cancellation paths identical on both runtimes.
+	void (async () => {
+		try {
+			for (;;) {
+				const { done, value } = await reader.read();
+
+				if (settled) return;
+
+				if (done) {
+					compressor.end();
+					return;
+				}
+
+				if (!compressor.write(value)) await drained(compressor);
+
+				if (settled) return;
+			}
+		} catch (error) {
+			// A source that failed mid-response has to surface on the compressed
+			// stream — otherwise the consumer waits on a response that never ends.
+			compressor.destroy(error instanceof Error ? error : new Error(String(error)));
+		}
+	})();
+
+	return new ReadableStream<Uint8Array>({
+		start(controller) {
+			compressor.on('data', (chunk: Buffer) => {
+				if (settled) return;
+
+				controller.enqueue(new Uint8Array(chunk));
+
+				// Respect the consumer's backpressure instead of buffering the
+				// whole compressed response in memory.
+				if ((controller.desiredSize ?? 1) <= 0) compressor.pause();
+			});
+
+			compressor.on('end', () => {
+				if (settled) return;
+
+				settled = true;
+				controller.close();
+			});
+
+			compressor.on('error', (error: Error) => {
+				if (settled) return;
+
+				settled = true;
+				controller.error(error);
+			});
+		},
+
+		pull() {
+			compressor.resume();
+		},
+
+		cancel(reason) {
+			// The client is gone. Without this the source kept being pulled
+			// forever: one aborted request pinned a CPU core permanently.
+			settled = true;
+			compressor.destroy();
+
+			return reader.cancel(reason);
+		},
+	});
+}
+
+/** Resolves on `drain`, or as soon as the stream is finished with either way. */
+function drained(stream: Transform): Promise<void> {
+	return new Promise((resolve) => {
+		const done = (): void => {
+			stream.off('drain', done);
+			stream.off('close', done);
+			stream.off('error', done);
+			resolve();
+		};
+
+		stream.once('drain', done);
+		stream.once('close', done);
+		stream.once('error', done);
+	});
 }

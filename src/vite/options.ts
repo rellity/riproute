@@ -98,6 +98,19 @@ export function resolveOptions(options: RiprouteOptions, root: string): Resolved
 	const clientOutDir = path.resolve(root, options.clientOutDir ?? DEFAULTS.clientOutDir);
 	const serverOutDir = path.resolve(root, options.serverOutDir ?? DEFAULTS.serverOutDir);
 
+	// The generated server serves `clientOutDir` as static files. If the server
+	// bundle lives there too it is served with it — handing out the compiled
+	// hooks, every `.server.ts` module and whatever the build baked in. The
+	// degenerate case is quiet (`path.relative(x, x)` is `''`), so it is
+	// refused rather than papered over.
+	if (clientOutDir === serverOutDir || isInside(serverOutDir, clientOutDir)) {
+		throw new Error(
+			`[riproute] serverOutDir (${serverOutDir}) must not be inside clientOutDir ` +
+				`(${clientOutDir}): the client directory is served as static files, and the ` +
+				'server bundle would be served with it.'
+		);
+	}
+
 	const routesModule = options.routes !== undefined ? path.resolve(root, options.routes) : null;
 
 	const routesDir =
@@ -119,6 +132,13 @@ export function resolveOptions(options: RiprouteOptions, root: string): Resolved
 		clientDirFromServer:
 			path.relative(serverOutDir, clientOutDir).split(path.sep).join('/') || '.',
 	};
+}
+
+/** Whether `child` is the same directory as `parent`, or nested inside it. */
+function isInside(child: string, parent: string): boolean {
+	const relative = path.relative(parent, child);
+
+	return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 /**

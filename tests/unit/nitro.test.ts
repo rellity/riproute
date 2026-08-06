@@ -147,3 +147,23 @@ describe('generateServerModule adapter selection', () => {
 		expect(generateServerModule(options, '')).toContain("from 'riproute/adapter-node'");
 	});
 });
+
+describe('resolveOptions output directories', () => {
+	it('refuses a server output dir inside the client output dir', () => {
+		// The client dir is served as static files; the SSR bundle living there
+		// would be handed out with it. `path.relative(x, x)` is '' so the old
+		// `|| '.'` fallback made this collapse silently.
+		expect(() =>
+			resolveOptions({ clientOutDir: 'dist', serverOutDir: 'dist' }, '/app')
+		).toThrow(/must not be inside/);
+		expect(() =>
+			resolveOptions({ clientOutDir: 'dist', serverOutDir: 'dist/server' }, '/app')
+		).toThrow(/must not be inside/);
+	});
+
+	it('accepts the default sibling layout', () => {
+		const options = resolveOptions({}, '/app');
+
+		expect(options.clientDirFromServer).toBe('../client');
+	});
+});

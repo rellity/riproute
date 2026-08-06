@@ -112,8 +112,16 @@ export function normalizeWebRequest(request: Request, options: WebRequestOptions
 
 	if (host === url.host && `${protocol}:` === url.protocol) return request;
 
-	url.host = host;
-	url.protocol = protocol;
+	// Rebuilt, not mutated: the WHATWG `host` setter only replaces the port when
+	// the assigned value carries one, so `x-forwarded-host: app.example.com`
+	// would leave the internal listening port on the URL — and every absolute
+	// link the app derives from it (redirects, reset mails, OAuth callbacks)
+	// would point at `app.example.com:3000`.
+	const rebuilt = new URL(`${protocol}://${host}`);
 
-	return new Request(url, request);
+	rebuilt.pathname = url.pathname;
+	rebuilt.search = url.search;
+	rebuilt.hash = url.hash;
+
+	return new Request(rebuilt, request);
 }

@@ -11,7 +11,12 @@ import {
 	sendResponse,
 	toWebRequest,
 } from './dev-middleware';
-import { hasResolvedNitroPlugin, nitroBeforeRiproute, resolveAdapter } from './nitro';
+import {
+	hasResolvedNitroPlugin,
+	nitroBeforeRiproute,
+	nitroHeadersPlugin,
+	resolveAdapter,
+} from './nitro';
 import type { AdapterName } from './options';
 import { resolveOptions } from './options';
 import type { ResolvedRiprouteOptions, RiprouteOptions } from './options';
@@ -94,6 +99,8 @@ export function riproute(userOptions: RiprouteOptions = {}): Plugin[] {
 		serverFnClientPlugin(),
 		serverGuardPlugin(userOptions.serverOnly),
 		corePlugin(userOptions),
+		// Only nitro reads this one; inert in a node/bun build.
+		nitroHeadersPlugin(),
 		// Post-enforce: compiles only the query-carrying `.tsrx` ids that
 		// `@ripple-ts/vite-plugin`'s end-anchored filter misses when riproute is
 		// a real dependency inside node_modules.
@@ -216,7 +223,13 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 								// Output dirs are nitro's: the client lands in its
 								// public directory, the ssr service in its build dir.
 								assetsDir: resolved.assetsDir,
-								manifest: true,
+								// No manifest under nitro: riproute never reads it —
+								// the asset tags come from the bundle in
+								// `writeBundle` — and nitro publishes the whole
+								// client directory, dotfiles included, so
+								// `.vite/manifest.json` would be served, leaking the
+								// module graph and source paths.
+								manifest: false,
 								rollupOptions: { input: { [CLIENT_ENTRY_NAME]: CLIENT_ID } },
 							},
 						},
@@ -274,21 +287,27 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 				);
 			}
 
-			// The adapter choice and the plugin list have to agree: nitro's plugin
-			// rewrites the whole build, so it cannot coexist with a node/bun entry,
-			// and adapter:'nitro' without the plugin has nothing to hand off to.
+			// The adapter choice and the plugin list have to agree, and a
+			// mismatch cannot be warned past: each direction produces a broken or
+			// unprotected artifact, so both are hard errors.
 			if (nitroMode && !nitroPluginPresent) {
-				resolved.logger.warn(
-					"[riproute] adapter: 'nitro' is set but nitro() is not in `plugins`. " +
-						"Add nitro() from 'nitro/vite' (after riproute), or pick adapter: 'node' | 'bun'."
+				// The build would emit a bare `fetch` module with no static
+				// serving, no compression and no shell on disk.
+				throw new Error(
+					"[riproute] adapter: 'nitro' needs nitro() from 'nitro/vite' in `plugins` " +
+						'(after riproute). Add it, or choose adapter: ' +
+						"'node' | 'bun'."
 				);
 			}
 
 			if (!nitroMode && nitroPluginPresent) {
-				resolved.logger.warn(
-					`[riproute] nitro() is in \`plugins\` but adapter is '${adapter}'. Nitro drives ` +
-						"the build regardless — set adapter: 'nitro' (or remove nitro() to use the " +
-						`'${adapter}' entry).`
+				// Nitro would adopt riproute's node/bun entry as its ssr service:
+				// that module exports no `fetch` and calls `listen()` on import,
+				// binding a port from inside nitro's worker.
+				throw new Error(
+					`[riproute] nitro() is in \`plugins\` but adapter is '${adapter}'. Nitro ` +
+						'rewrites the whole build, so the two cannot be combined — set ' +
+						`adapter: 'nitro', or remove nitro() to use the '${adapter}' entry.`
 				);
 			}
 
@@ -510,13 +529,16 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 			if (entry === undefined || entry.type !== 'chunk') return;
 
-			const base = config.base === '' ? '/' : config.base;
+			// Escaped: `base` is developer-supplied, and a stray quote in it would
+			// otherwise close the attribute and inject markup into every page.
+			const base = escapeAttribute(config.base === '' ? '/' : config.base);
 
 			clientTags = [
 				...collectCss(bundle, entry.fileName).map(
-					(file) => `<link rel="stylesheet" crossorigin href="${base}${file}">`
+					(file) =>
+						`<link rel="stylesheet" crossorigin href="${base}${escapeAttribute(file)}">`
 				),
-				`<script type="module" crossorigin src="${base}${entry.fileName}"></script>`,
+				`<script type="module" crossorigin src="${base}${escapeAttribute(entry.fileName)}"></script>`,
 			].join('');
 
 			// In nitro mode the template is baked into the ssr service instead:
@@ -528,9 +550,15 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 
 			if (raw === null) return;
 
-			const html = raw.includes('</head>')
-				? raw.replace('</head>', `\t${clientTags}\n\t</head>`)
-				: raw + clientTags;
+			// Sliced rather than `replace`d: a string replacement expands `$&`,
+			// `` $` ``, `$'` and `$n`, so a `$` in an asset name would splice the
+			// document into an attribute. Matched case-insensitively, like
+			// `splitTemplate`, so `</HEAD>` keeps its tags too.
+			const close = /<\/head\s*>/i.exec(raw);
+			const html =
+				close === null
+					? raw + clientTags
+					: `${raw.slice(0, close.index)}\t${clientTags}\n\t${raw.slice(close.index)}`;
 
 			await fs.mkdir(options.clientOutDir, { recursive: true });
 			await fs.writeFile(path.join(options.clientOutDir, 'index.html'), html, 'utf-8');
@@ -563,6 +591,11 @@ function warnAboutRippleConfig(root: string): void {
 			"  Vite's own and will intercept requests riproute expects to answer.\n" +
 			'  Delete it, or move its settings into vite.config.ts.\n'
 	);
+}
+
+/** Escapes a value going into a double-quoted HTML attribute. */
+function escapeAttribute(value: string): string {
+	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
 /** Collects the stylesheets an entry chunk and its imports pull in. */

@@ -102,6 +102,17 @@ describe('toWebRequest', () => {
 		);
 	});
 
+	it('allowedHosts cannot be bypassed with an absolute-form request target', () => {
+		// HTTP/1.1 permits `GET http://evil.com/x`, and an absolute target beats
+		// the base URL — so checking the Host header alone let a forged origin
+		// through while the header itself looked allow-listed.
+		expect(() =>
+			toWebRequest(fakeRequest({ url: 'http://evil.com/x', headers: { host: 'app.test' } }), {
+				allowedHosts: ['app.test'],
+			})
+		).toThrow(/Refused Host/);
+	});
+
 	it('streams a request body', async () => {
 		const request = toWebRequest(fakeRequest({ method: 'POST', body: '{"a":1}', headers: {} }));
 
@@ -235,6 +246,18 @@ describe('serveStatic', () => {
 	it('never serves a dotfile', async () => {
 		expect(await serve(new Request('http://t/.env'))).toBeUndefined();
 		expect(await serve(new Request('http://t/%2e%65nv'))).toBeUndefined();
+	});
+
+	it('serves under a non-root base, and ignores paths outside it', async () => {
+		const based = serveStatic(dir, { immutable: ['assets'], base: '/app/' });
+
+		const asset = await based(new Request('http://t/app/assets/app-abc123.js'));
+
+		expect(asset?.status).toBe(200);
+		expect(asset?.headers.get('cache-control')).toContain('immutable');
+
+		// The un-prefixed path is not this app's, and must not resolve.
+		expect(await based(new Request('http://t/assets/app-abc123.js'))).toBeUndefined();
 	});
 
 	it('only answers GET and HEAD', async () => {

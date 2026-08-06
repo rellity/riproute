@@ -471,10 +471,16 @@ chosen adapter: a Bun build carries no `node:http`, a node build no
 `Bun.serve`, and the shared static/compression code is the one hardened copy.
 
 Both `createServer` functions take the same options — `trustProxy`,
-`allowedHosts`, `compress`, `gracefulShutdown`, `shutdownTimeout`, `onError`.
-The generated entry uses the defaults; to set your own, import its `handler`
-with `RIPROUTE_NO_LISTEN=1` and wrap it in `createServer(handler, { … })` from
-`riproute/adapter-node` or `riproute/adapter-bun`.
+`allowedHosts`, `compress`, `gracefulShutdown`, `shutdownTimeout`, `onError`,
+plus `maxBodyBytes` and `idleTimeout` on Bun. The generated entry uses the
+defaults; to set your own, import its `handler` with `RIPROUTE_NO_LISTEN=1`
+and wrap it in `createServer(handler, { … })` from `riproute/adapter-node` or
+`riproute/adapter-bun`.
+
+`allowedHosts` is worth setting behind a proxy: without it the request URL's
+origin comes from the client's `Host` header, and anything the app builds from
+it (redirects, password-reset links, canonical tags) inherits whatever the
+client sent.
 
 ### Nitro
 
@@ -492,13 +498,26 @@ request handler as nitro's SSR service; nitro then owns the server on both
 sides — its dev server in `vite dev`, and `vite build` producing a deployable
 `.output/` for whatever preset is configured (node, Cloudflare, Vercel, …)
 instead of `dist/`. Static assets, compression and process lifecycle are
-nitro's from there, riproute renders the pages, and everything else — routes,
-titles, hooks, the server-only guard — behaves identically. Nitro's own
-features (`server/api/` routes, storage, tasks) work as documented by nitro.
+nitro's from there, riproute renders the pages, and everything the framework
+owns — routes, titles, server functions, hooks, the server-only guard —
+behaves identically. Nitro's own features (`server/api/` routes, storage,
+tasks) work as documented by nitro.
+
+Two static-serving details differ, because those responses are nitro's rather
+than riproute's. riproute contributes an `x-content-type-options: nosniff`
+route rule so that much carries over, but the SVG sandbox its own adapters
+apply per-response does not — nitro's route rules match path segments, not
+extensions. An app serving untrusted SVG under nitro should add a route rule
+for the directory holding it. Dotfiles are also nitro's call: it publishes the
+whole client directory, where riproute's adapters refuse them (riproute keeps
+its own build manifest out of that directory for exactly this reason).
 
 Order matters: nitro reads the SSR entry riproute plants during config
 resolution, so `nitro()` must come **after** `riproute()` — riproute warns if
-it does not. The detection can be overridden with `riproute({ nitro: false })`.
+it does not. Adapter and plugins have to agree, and a mismatch is an error
+rather than a warning: `adapter: 'nitro'` without the plugin cannot produce a
+deployable build, and the plugin alongside `adapter: 'node' | 'bun'` would
+have nitro adopt riproute's standalone entry, which binds a port on import.
 
 Two dev-mode notes. The very first page load after the server boots may paint
 before stylesheets are inlined (every later render has them); and plugins that

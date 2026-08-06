@@ -39,13 +39,17 @@ export function toWebRequest(req: IncomingMessage, options: RequestOptions = {})
 		headers.get('host') ??
 		'localhost';
 
-	if (options.allowedHosts !== undefined && !options.allowedHosts.includes(host)) {
+	const url = new URL(req.url ?? '/', `${protocol}://${host}`);
+
+	// Checked against the *resolved* URL, not the `Host` header. HTTP/1.1
+	// permits an absolute-form request target, and it overrides the base — so
+	// `GET http://evil.com/x` with an allow-listed `Host:` would otherwise pass
+	// the check while the handler saw `http://evil.com` as its origin.
+	if (options.allowedHosts !== undefined && !options.allowedHosts.includes(url.host)) {
 		// The middleware turns this into a 400 — the same path a malformed host
 		// takes — rather than serving a request under a forged origin.
-		throw new Error(`[riproute] Refused Host header: ${host}`);
+		throw new Error(`[riproute] Refused Host header: ${url.host}`);
 	}
-
-	const url = new URL(req.url ?? '/', `${protocol}://${host}`);
 	const method = (req.method ?? 'GET').toUpperCase();
 	const init: RequestInit & { duplex?: 'half' } = { method, headers };
 

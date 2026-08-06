@@ -15,6 +15,8 @@
  * shape; nitro anywhere before riproute is detected and warned about.
  */
 
+import type { Plugin } from 'vite';
+
 /** Plugin names `nitro/vite` registers; any one of them means nitro is on. */
 const NITRO_PLUGIN_NAMES = new Set(['nitro:init', 'nitro:env', 'nitro:main']);
 
@@ -57,6 +59,48 @@ export function nitroBeforeRiproute(plugins: readonly { name: string }[]): boole
 /** Whether the resolved plugin list contains the nitro plugin. */
 export function hasResolvedNitroPlugin(plugins: readonly { name: string }[]): boolean {
 	return plugins.some((plugin) => NITRO_PLUGIN_NAMES.has(plugin.name));
+}
+
+type NitroRouteRule = { headers?: Record<string, string> };
+type NitroInstance = { options: { routeRules?: Record<string, NitroRouteRule> } };
+
+/**
+ * Restores the static-response hardening riproute's own adapters apply.
+ *
+ * Under nitro the client build is served by *nitro*, not by riproute's
+ * `serveStatic`, so `nosniff` and the SVG sandbox would silently not apply —
+ * nitro sets neither. A Vite plugin carrying a `nitro` property is registered
+ * as a nitro module (`nitro/vite` collects `plugin.nitro`), which is the
+ * supported way to reach `routeRules`. Inert when nitro is absent: nothing
+ * else reads the property.
+ *
+ * Existing rules win, so an app can override either header.
+ */
+export function nitroHeadersPlugin(): Plugin {
+	return {
+		name: 'riproute:nitro-headers',
+
+		nitro: {
+			name: 'riproute:nitro-headers',
+			setup(nitro: NitroInstance) {
+				const rules = (nitro.options.routeRules ??= {});
+				const everything = (rules['/**'] ??= {});
+
+				everything.headers = {
+					'x-content-type-options': 'nosniff',
+					...everything.headers,
+				};
+
+				// No SVG sandbox rule here. riproute's own adapters set
+				// `content-security-policy: sandbox` per response, keyed on the
+				// resolved content type; nitro's route rules match path segments
+				// and cannot express "by extension" — a `/**/*.svg` key matches
+				// *everything*, which sandboxes the HTML document and stops the
+				// app hydrating. Apps serving untrusted SVG under nitro should add
+				// their own rule for the directory those files live in.
+			},
+		},
+	} as Plugin;
 }
 
 /**
