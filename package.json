@@ -8,8 +8,8 @@
 	},
 	"scripts": {
 		"build": "turbo run build",
-		"test": "turbo run test",
-		"test:e2e": "turbo run test:e2e",
+		"test": "vitest run",
+		"test:e2e": "node tests/e2e/run.mjs",
 		"format": "prettier --write .",
 		"format:check": "prettier --check ."
 	},
