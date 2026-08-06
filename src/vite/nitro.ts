@@ -112,9 +112,9 @@ export function nitroHeadersPlugin(): Plugin {
  * further configuration. Everything else defaults to node.
  */
 export function resolveAdapter(
-	options: { adapter?: 'node' | 'bun' | 'nitro'; nitro?: boolean },
+	options: { adapter?: 'node' | 'bun' | 'nitro' | 'workerd'; nitro?: boolean },
 	plugins: unknown
-): 'node' | 'bun' | 'nitro' {
+): 'node' | 'bun' | 'nitro' | 'workerd' {
 	if (options.adapter !== undefined) return options.adapter;
 	if (options.nitro === true) return 'nitro';
 	if (options.nitro === false) return 'node';

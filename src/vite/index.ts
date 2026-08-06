@@ -44,6 +44,7 @@ import {
 	generateRoutesProxyModule,
 	generateServerFnManifestModule,
 	generateServerModule,
+	generateWorkerdModule,
 	resolvedId,
 } from './virtual-modules';
 
@@ -258,6 +259,11 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 						},
 					},
 					ssr: {
+						// A Worker is uploaded as a self-contained module: there is no
+						// `node_modules` to resolve a bare import against at runtime,
+						// so everything has to be in the bundle. Node and Bun keep
+						// their dependencies external and resolve them normally.
+						...(adapter === 'workerd' ? { resolve: { noExternal: true } } : {}),
 						build: {
 							outDir: resolved.serverOutDir,
 							// The server bundle is read by Node, never by a browser,
@@ -339,12 +345,24 @@ function corePlugin(userOptions: RiprouteOptions): Plugin {
 				case resolvedId(HANDLER_ID):
 					return generateHandlerModule(options, config.root);
 
-				case resolvedId(SERVER_ID):
+				case resolvedId(SERVER_ID): {
+					if (adapter === 'workerd') {
+						// A Worker has no filesystem, so a template-mode app's
+						// index.html is baked in rather than read at boot.
+						return generateWorkerdModule(options, {
+							tags: clientTags,
+							template: await fs
+								.readFile(options.template, 'utf-8')
+								.catch(() => null),
+						});
+					}
+
 					return generateServerModule(
 						options,
 						clientTags,
 						adapter === 'bun' ? 'bun' : 'node'
 					);
+				}
 
 				case resolvedId(SERVER_FNS_ID):
 					return generateServerFnManifestModule(serverFnFiles, config.root);

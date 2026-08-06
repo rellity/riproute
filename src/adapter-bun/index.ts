@@ -1,10 +1,10 @@
 import {
-	maybeCompress,
 	normalizeWebRequest,
 	toErrorResponse,
 	type ErrorHandler,
 	type WebRequestOptions,
 } from '../adapter-shared';
+import { maybeCompress } from '../adapter-node/compression';
 import { serveStatic } from '../adapter-node/static';
 
 export { serveStatic };

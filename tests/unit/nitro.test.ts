@@ -8,7 +8,11 @@ import {
 	resolveAdapter,
 } from '../../src/vite/nitro';
 import { resolveOptions } from '../../src/vite/options';
-import { generateNitroModule, generateServerModule } from '../../src/vite/virtual-modules';
+import {
+	generateNitroModule,
+	generateServerModule,
+	generateWorkerdModule,
+} from '../../src/vite/virtual-modules';
 
 const nitroish = (name: string) => ({ name });
 
@@ -165,5 +169,39 @@ describe('resolveOptions output directories', () => {
 		const options = resolveOptions({}, '/app');
 
 		expect(options.clientDirFromServer).toBe('../client');
+	});
+});
+
+describe('generateWorkerdModule', () => {
+	const options = resolveOptions({}, path.resolve('/app'));
+
+	it('emits a Worker module with no filesystem, server or listen', () => {
+		const code = generateWorkerdModule(options, {
+			tags: '<script src="/assets/index-abc.js"></script>',
+			template: '<!doctype html><html><head></head><body></body></html>',
+		});
+
+		expect(code).toContain("import { createFetchHandler } from 'riproute/adapter-workerd';");
+		expect(code).toContain('export default { fetch: createFetchHandler(handler) };');
+		// A Worker has no filesystem, no process and no socket to listen on.
+		expect(code).not.toContain('node:fs');
+		expect(code).not.toContain('createServer');
+		expect(code).not.toContain('RIPROUTE_NO_LISTEN');
+		// The template is baked in, not read at boot.
+		expect(code).toContain('<!doctype html>');
+		expect(code).toContain('index-abc.js');
+	});
+
+	it('fails loudly when there is no document to render', () => {
+		expect(generateWorkerdModule(options, { tags: '', template: null })).toContain(
+			'No document to render'
+		);
+	});
+});
+
+describe('resolveAdapter with workerd', () => {
+	it('selects workerd when asked, over an auto-detected nitro', () => {
+		expect(resolveAdapter({ adapter: 'workerd' }, [])).toBe('workerd');
+		expect(resolveAdapter({ adapter: 'workerd' }, [nitroish('nitro:main')])).toBe('workerd');
 	});
 });

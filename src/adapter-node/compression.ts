@@ -195,3 +195,51 @@ function drained(stream: Transform): Promise<void> {
 		stream.once('error', done);
 	});
 }
+
+/**
+ * Compresses a response when the client, the content type and the size all say
+ * it is worth it. A no-op when nothing is gained, returning the response as-is.
+ */
+export function maybeCompress(request: Request, response: Response): Response {
+	if (response.body === null || response.status === 204 || response.status === 304) {
+		return response;
+	}
+
+	const encoding = negotiateEncoding(request.headers.get('accept-encoding'));
+
+	if (encoding === null) return response;
+
+	const headers = new Headers(response.headers);
+	const length = headers.get('content-length');
+
+	if (!shouldCompress(headers, length === null ? null : Number(length))) return response;
+
+	// The compressed size is unknowable up front, so the response streams.
+	headers.delete('content-length');
+	headers.set('content-encoding', encoding);
+	appendVary(headers, 'accept-encoding');
+
+	return new Response(compressStream(response.body, encoding), {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
+}
+
+export function appendVary(headers: Headers, value: string): void {
+	const existing = headers.get('vary');
+
+	if (existing === null) {
+		headers.set('vary', value);
+		return;
+	}
+
+	const parts = existing
+		.toLowerCase()
+		.split(',')
+		.map((part) => part.trim());
+
+	if (parts.includes('*') || parts.includes(value)) return;
+
+	headers.set('vary', `${existing}, ${value}`);
+}

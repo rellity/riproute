@@ -43,6 +43,11 @@
 			"import": "./dist/adapter-node/index.js",
 			"default": "./dist/adapter-node/index.js"
 		},
+		"./adapter-workerd": {
+			"types": "./dist/adapter-workerd/index.d.ts",
+			"import": "./dist/adapter-workerd/index.js",
+			"default": "./dist/adapter-workerd/index.js"
+		},
 		"./adapter-bun": {
 			"types": "./dist/adapter-bun/index.d.ts",
 			"import": "./dist/adapter-bun/index.js",

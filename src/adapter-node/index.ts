@@ -1,7 +1,8 @@
 import http from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 
-import { maybeCompress, toErrorResponse } from '../adapter-shared';
+import { toErrorResponse } from '../adapter-shared';
+import { maybeCompress } from './compression';
 import { toWebRequest } from './request';
 import type { RequestOptions } from './request';
 import { sendWebResponse } from './response';

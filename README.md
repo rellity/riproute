@@ -458,9 +458,10 @@ process.
 The production target is one option:
 
 ```ts
-riproute({ adapter: 'node' }); // default
-riproute({ adapter: 'bun' }); //  run with `bun dist/server`
-riproute({ adapter: 'nitro' }); // hand off to nitro, below
+riproute({ adapter: 'node' }); //    default
+riproute({ adapter: 'bun' }); //     run with `bun dist/server`
+riproute({ adapter: 'workerd' }); // Cloudflare Workers, below
+riproute({ adapter: 'nitro' }); //   hand off to nitro, below
 ```
 
 `'node'` and `'bun'` build the same `dist/server/index.js` — a complete server
@@ -481,6 +482,43 @@ and wrap it in `createServer(handler, { … })` from `riproute/adapter-node` or
 origin comes from the client's `Host` header, and anything the app builds from
 it (redirects, password-reset links, canonical tags) inherits whatever the
 client sent.
+
+### Cloudflare Workers
+
+`adapter: 'workerd'` builds `dist/server/index.js` as a Worker module —
+`export default { fetch }` — with everything bundled, since a Worker has no
+`node_modules` to resolve against at runtime. It is the thinnest of the three:
+workerd _is_ the web platform, so there is no socket to listen on, no process
+to drain, and no compression (Cloudflare compresses at the edge).
+
+```jsonc
+// wrangler.jsonc
+{
+	"name": "my-app",
+	"main": "dist/server/index.js",
+	"compatibility_date": "2026-08-01",
+	// Required: riproute's request context is an AsyncLocalStorage, which
+	// workerd provides only with this flag. Server functions need it too.
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": { "directory": "dist/client" },
+}
+```
+
+Static assets are the platform's job. With the `assets` directory above,
+Cloudflare answers asset requests before the Worker runs. If you configure the
+Worker to run first instead, riproute tries an `ASSETS` binding for paths that
+name a file (`/assets/app-abc.js`, never `/users/42`, so a page render never
+spends a subrequest) and falls through to the router on a 404 — so a missing
+file renders your own not-found page. `riproute({ adapter: 'workerd' })` takes
+`assets: false` to skip that entirely, plus the usual `allowedHosts`,
+`trustProxy` and `onError`.
+
+Two differences from the node and Bun adapters, both because the platform owns
+the response: there is no compression pass, and the static hardening
+(`nosniff`, dotfile refusal, the SVG sandbox) belongs to Cloudflare's asset
+serving rather than riproute. Everything the framework owns — routing, titles,
+server functions and their CSRF gate, hooks, the server-only guard — behaves
+exactly as it does elsewhere.
 
 ### Nitro
 

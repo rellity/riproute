@@ -50,13 +50,14 @@ export type RiprouteOptions = {
 	 *
 	 * - `'node'` — riproute's own `node:http` entry (`node dist/server`).
 	 * - `'bun'` — riproute's own `Bun.serve` entry (`bun dist/server`).
+	 * - `'workerd'` — a Cloudflare Workers module (`export default { fetch }`).
 	 * - `'nitro'` — hand off to nitro (needs `nitro()` from `nitro/vite` in the
 	 *   plugin array), which produces `.output/` for any preset.
 	 *
 	 * Defaults to `'node'`, unless the nitro plugin is present — then `'nitro'`.
 	 * The build bundles only the chosen adapter; the others are tree-shaken out.
 	 */
-	adapter?: 'node' | 'bun' | 'nitro';
+	adapter?: 'node' | 'bun' | 'nitro' | 'workerd';
 	/**
 	 * Serve through nitro instead of riproute's own entry.
 	 *
@@ -66,7 +67,7 @@ export type RiprouteOptions = {
 	nitro?: boolean;
 };
 
-export type AdapterName = 'node' | 'bun' | 'nitro';
+export type AdapterName = 'node' | 'bun' | 'nitro' | 'workerd';
 
 export type ResolvedRiprouteOptions = {
 	routesDir: string | null;

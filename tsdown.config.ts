@@ -17,6 +17,7 @@ export default defineConfig({
 		'vite/index': 'src/vite/index.ts',
 		'adapter-node/index': 'src/adapter-node/index.ts',
 		'adapter-bun/index': 'src/adapter-bun/index.ts',
+		'adapter-workerd/index': 'src/adapter-workerd/index.ts',
 	},
 	outDir: 'dist',
 	format: 'esm',
